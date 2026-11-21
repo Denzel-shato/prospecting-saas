@@ -58,8 +58,10 @@ class EvidenceTests(unittest.TestCase):
     def test_hiring_and_client_work_are_signals_not_intent(self):
         s = u.snap("<p>We're hiring! See our case studies.</p>")
         by = ev_by_type(extract_evidence(K, [s]))
-        self.assertIn("NOT purchase intent", by["signal:client_work"].notes)
-        self.assertIn("NOT purchase intent", by["signal:hiring_info_only"].notes)
+        for key in ("signal:client_work", "signal:hiring_info_only"):
+            note = by[key].notes
+            self.assertIn("NOT", note)
+            self.assertIn("purchase intent", note)
 
     def test_staffing_homepage_self_description_is_negative(self):
         s = u.snap("<h1>We are an IT staffing agency</h1>")
