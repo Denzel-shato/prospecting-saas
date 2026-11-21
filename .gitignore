@@ -1,0 +1,19 @@
+# Credentials and private configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+# Generated or installed files
+node_modules/
+.next/
+dist/
+build/
+coverage/
+.cache/
+.DS_Store
+# Local evaluation/prospect data
+vm1-data/
+reports/raw/
+*.log
