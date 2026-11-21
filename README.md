@@ -20,4 +20,4 @@ A configurable, research-first B2B prospecting and outreach SaaS. Users describe
 Do not start Phase 1, run VM1, send email, use paid APIs or approve expenditures without explicit user permission. Do not commit secrets or private prospect data. Work on separate branches when agents overlap. Update the handoff and decision log before a Claude account reaches its usage limit.
 
 ## Sources not yet complete
-The full original PRD was created in a ChatGPT writing block but not exported. Two architecture-review PDFs and their textual exports are in the prepared starter ZIP; those still need to be added to `docs/reviews/`. The project briefs here are summaries, not substitutes for those originals.
+The full original PRD was created in a ChatGPT writing block but not exported. Searchable text exports of both architecture reviews are now in `docs/reviews/`. The original PDFs (and v1 Markdown export) from the starter ZIP still need to be uploaded. Summaries are not substitutes for those originals.
