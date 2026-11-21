@@ -21,17 +21,12 @@ from .evidence import (PageSnapshot, apply_discovery_record, extract_evidence, v
                        verify_excerpt_parts)
 from .fetch import PoliteFetcher
 from .guard import SpendLedger, credentials_present
+from .pageselect import plan_selection, rank_candidates
 from .prequalify import coverage, order_pool
 from .htmlparse import PageData, parse_html
 from .people import find_decision_makers
 from .score import EXCLUDED, NOT_RESEARCHABLE, score_company
 
-SECONDARY_KEYWORDS = [  # (keyword, priority) lower = fetched first
-    ("team", 0), ("leadership", 0), ("people", 0), ("about", 1), ("company", 1), ("who-we-are", 1),
-    ("our-story", 1), ("studio", 1), ("agency", 1), ("services", 2), ("what-we-do", 2), ("what-we-build", 2),
-    ("capabilities", 2), ("expertise", 2), ("offerings", 2), ("work", 3), ("case-stud", 3), ("portfolio", 3),
-    ("approach", 3), ("how-we-work", 3), ("process", 3), ("contact", 4),
-]  # per-site page limit (max_secondary) is unchanged; this only widens WHICH pages qualify
 _ASSET_RE = re.compile(r"\.(pdf|jpe?g|png|gif|svg|webp|zip|mp4|mov|docx?|xlsx?|pptx?)$", re.I)
 
 
@@ -52,33 +47,14 @@ def _now() -> str:
 
 
 def rank_secondary(home: PageData, home_url: str) -> list[tuple[int, str]]:
-    """All same-site candidate pages, best first, as (priority, url). Used for fetching AND diagnostics."""
-    base = registrable_domain(urlsplit(home_url).hostname or "")
-    home_path = urlsplit(home_url).path.rstrip("/")
-    seen: set[str] = set()
-    ranked: list[tuple[int, int, str]] = []
-    for href, text in home.links:
-        sp = urlsplit(href)
-        if registrable_domain(sp.hostname or "") != base:
-            continue
-        path = sp.path.rstrip("/")
-        if not path or path == home_path or _ASSET_RE.search(path):
-            continue
-        hay = (path + " " + text).lower()
-        prio = next((p for kw, p in SECONDARY_KEYWORDS if kw in hay), None)
-        if prio is None:
-            continue
-        norm = f"{sp.scheme}://{sp.netloc}{sp.path}"
-        if norm in seen:
-            continue
-        seen.add(norm)
-        ranked.append((prio, len(ranked), norm))
-    ranked.sort()
-    return [(p, u) for p, _, u in ranked]
+    """All eligible same-site pages, best first, as (priority, url). See vm1.pageselect."""
+    return [(c.priority, c.url) for c in rank_candidates(home.links, home_url)]
 
 
 def pick_secondary(home: PageData, home_url: str, limit: int) -> list[str]:
-    return [u for _, u in rank_secondary(home, home_url)[:limit]]
+    """URLs to fetch (<= limit) in fetch order, chosen by the ICP-aware slot plan (Issue #4)."""
+    chosen = plan_selection(rank_candidates(home.links, home_url), limit)
+    return [c.url for c in chosen]
 
 
 def homepage_url(cand: Candidate) -> str:
@@ -144,21 +120,29 @@ def research_company(cand: Candidate, fetcher: PoliteFetcher, icp: dict, max_sec
         page = parse_html(res.text or "", url)
         snaps.append(PageSnapshot(url=url, fetched_at=res.fetched_at, page=page, is_homepage=True))
         pages_by_url[url] = page
-        ranked_sec = rank_secondary(page, url)
-        picks = [u for _, u in ranked_sec[:max_secondary]]
+        ranked_sel = rank_candidates(page.links, url)
+        chosen = plan_selection(ranked_sel, max_secondary)
+        picks = [c.url for c in chosen]
+        by_url = {c.url: c for c in chosen}
         rec["secondary_links_found"] = len(picks)
-        # Diagnostics (Issue #3): which eligible pages existed and which were fetched, so "evidence missing from
-        # fetched pages" vs "page never fetched" can be told apart from the run artifacts alone.
-        rec["secondary_candidates"] = [{"url": u, "priority": pr, "fetched": u in picks} for pr, u in ranked_sec[:12]]
+        # Diagnostics (Issue #3/#4): which eligible pages existed, why each was or was not chosen, and what each
+        # fetched page parsed into, so "evidence missing from fetched pages" vs "page never fetched" vs "page
+        # fetched but empty (e.g. JS-rendered)" can be told apart from the run artifacts alone.
+        rec["secondary_candidates"] = [c.to_dict() for c in ranked_sel[:15]]
         rec["homepage_text_blocks"] = len(page.blocks)
         for sec in picks:
             sres = fetcher.fetch(sec)
-            rec["secondary"].append({"url": sec, "ok": sres.ok, "error": sres.error, "status": sres.status})
+            sel = by_url[sec]
+            entry = {"url": sec, "ok": sres.ok, "error": sres.error, "status": sres.status,
+                     "category": sel.category, "reason": sel.reason, "slot": sel.slot}
             if sres.ok:
                 surl = sres.final_url or sec
                 spage = parse_html(sres.text or "", surl)
+                entry.update(final_url=surl, text_blocks=len(spage.blocks), text_chars=len(sres.text or ""),
+                             links=len(spage.links))
                 snaps.append(PageSnapshot(url=surl, fetched_at=sres.fetched_at, page=spage))
                 pages_by_url[surl] = spage
+            rec["secondary"].append(entry)
 
     evidence = extract_evidence(key, snaps, company_name=cand.name)
     evidence = apply_discovery_record(key, cand, evidence)

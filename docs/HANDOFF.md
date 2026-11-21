@@ -99,3 +99,7 @@ Read all planning files and the original Phase 0 reports when available. Restate
 
 ## Issue #3 (branch `vm1-pilot-issue3`, base 4e67181)
 Completed: offline evidence-extraction fixes (see `docs/ISSUE-3-REPORT.md`). Changed: `pilot/vm1/evidence.py`, `score.py`, `pipeline.py`, new `pilot/tests/test_issue3_regressions.py`, `pilot/scripts/issue3_before_after.py`. Tests: 148 OK. Blockers: no network here; no live re-run; Velvet cause unknown. Next: fresh live run on a networked machine and human labeling. Not merged to main; no live improvement claimed.
+
+## Issue #4 (branch `vm1-pilot-issue4`, base `vm1-pilot-issue3` @ 793454e)
+Completed (offline only): ICP-aware secondary-page selection (`pilot/vm1/pageselect.py`, wired in `pipeline.py`), selection reasons and per-page `text_blocks` diagnostics, 17 new tests, `pilot/scripts/issue4_before_after.py`, `docs/ISSUE-4-REPORT.md`. Tests: 165 OK. Blockers: no network here; real Telos/Epic/Velvet pages unavailable, so no live relevance claim. Open: inspect Epic's `service:web_app` excerpt in a live run (own-product vs client offering, see report). Next: fresh live run on the Mac; compare `secondary_candidates`/`secondary[].text_blocks` for Telos and Velvet; human-label top 20. Not merged to `main`.
+

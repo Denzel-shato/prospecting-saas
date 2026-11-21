@@ -6,7 +6,7 @@ Python 3.11+, **standard library only** (no installs).
 
 ## Reproduce
     cd pilot
-    python3 -m unittest discover -s tests -t .          # 148 tests, offline
+    python3 -m unittest discover -s tests -t .          # 165 tests, offline
     python3 -m vm1 synthetic                             # offline pipeline check on FICTIONAL data (never a finding)
     python3 -m vm1 run --sources wikidata                # live, keyless, zero-cost discovery
     python3 -m vm1 run --sources wikidata,openstreetmap --ack-overpass-terms   # adds Overpass (see below)
