@@ -46,5 +46,8 @@ A subsequent Claude account read a ZIP of this repository and reported reviewing
 ### Cross-account collaboration note
 The other account could inspect a ZIP but could not read or write GitHub directly. At the end of future sessions, ask Claude to return the changed Markdown file or ZIP when its GitHub integration is unavailable. ChatGPT's connected GitHub tools can apply those edits after reviewing the exact file content; do not assume a file was committed merely because Claude said it drafted one.
 
+## Fast path to execution (2026-11-21)
+Read `docs/VM1-START-HERE.md`: a condensed, approval-ready plan was committed to avoid another architecture-review loop. **It is only a proposal.** Get separate approval for architecture A and no-paid-API VM1 pilot B before implementation. Phase 1 and any budget remain unapproved.
+
 ## Instructions for the next account
 Read all planning files and the original Phase 0 reports when available. Restate agreed choices separately from proposed revisions. Do not code or incur costs without explicit permission. Finish the session by updating this file with exact work done and commit/PR links.
