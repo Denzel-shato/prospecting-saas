@@ -7,6 +7,9 @@ This private repository is the shared project context for switching between Clau
 ## What we're building
 A configurable, research-first B2B prospecting and outreach SaaS. Users describe their offering and ideal customer profile; the system finds relevant real companies, builds attributable evidence, transparently ranks fit, identifies public decision-makers, and drafts truthful outreach for human approval. Sending, pipeline and accounts follow only after validating research quality.
 
+## Next decision
+Read [docs/VM1-START-HERE.md](docs/VM1-START-HERE.md) for the short approval-ready pilot plan. **No approvals or spending have yet been granted.**
+
 ## Navigate the project
 - [CLAUDE.md](CLAUDE.md) — instructions for future Claude accounts.
 - [docs/HANDOFF.md](docs/HANDOFF.md) — latest project state and blockers.
