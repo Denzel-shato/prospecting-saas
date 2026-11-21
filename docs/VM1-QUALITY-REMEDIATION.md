@@ -7,7 +7,7 @@ no paid APIs, no browser automation, no sending, Overpass still off unless `--ac
 
 | Item | Status |
 |---|---|
-| Offline test suite | **124 tests pass** (82 original, 6 of them deliberately updated, + 42 new regression tests) |
+| Offline test suite | **124 tests pass** (82 original, several of them updated to the stricter semantics, + 42 new regression tests) |
 | Baseline live run `20261121T150320Z-live` artifacts (`companies.json`, `report.md`, labels) | **Not available** in the environment where this was written. Nothing here was tested against them, and no contents are invented. |
 | Live network re-run | **Not done.** The workspace blocks outbound HTTPS (proxy returns 403 to `query.wikidata.org`). No live result is claimed. |
 | Identities of GitLab, Okta, Breadcrumbs, Entromy, Probo, EngineAwesome | **Not independently verified.** Only the fragments quoted in Issue #2 were used. |
@@ -96,15 +96,15 @@ Other:
 
 ## 6. Procedure: label the baseline top 20 (do this BEFORE rerunning)
 
-1. Preserve the original run read-only: `cp -R runs/20261121T150320Z-live runs/_baseline-20261121T150320Z-live && chmod -R a-w runs/_baseline-20261121T150320Z-live`.
-   Never edit or regenerate files inside the original directory.
-2. Open `runs/_baseline-.../labels_template.csv`. Rows are in rank order; label the **first 20**. Columns: `domain, relevant, us_based, decision_maker_correct, notes`.
+1. Preserve the original run: keep `runs/20261121T150320Z-live` untouched (e.g. `chmod -R a-w` it) and make a working copy:
+   `cp -R runs/20261121T150320Z-live runs/_baseline-copy`. Never regenerate files inside the original directory.
+2. Open `runs/_baseline-copy/labels_template.csv`. Rows are in rank order; label the **first 20**. Columns: `domain, relevant, us_based, decision_maker_correct, notes`.
 3. Label blind: use only the company's own site and your own judgement. Do **not** look at the tier, score or evidence first.
    - `relevant` = `y` if it is an independent, US-based software/product/web studio or agency that takes client work and could plausibly buy outsourced React/Next.js/TypeScript/frontend/dashboard help; `n` if it is a SaaS vendor, enterprise, staffing firm, non-US, unrelated or dead; `unsure` otherwise (unsure rows are excluded from the metric).
    - `us_based` = `y` / `n` / `unsure`.
    - `decision_maker_correct`: only if the report named someone. `y` only if that person leads **that** company; `n` otherwise. Leave blank if none was named.
 4. Save as `runs/labels-baseline.csv`. If you can, have a second person label the same rows independently and compare.
-5. Compute baseline metrics on the **copy**: `python3 -m vm1 report --run runs/_baseline-20261121T150320Z-live --labels runs/labels-baseline.csv`
+5. Compute baseline metrics on the **copy**: `python3 -m vm1 report --run runs/_baseline-copy --labels runs/labels-baseline.csv`
    (this rewrites `report.md` and the template inside the copy only). The "Top-20 relevance" row is y/(y+n).
 6. After the new run, label its top 20 the same way (labels are keyed by domain, so overlapping domains reuse your earlier answers; new domains need new labels).
 7. To test recall of the gate, put 5–10 agencies you already know are relevant into a CSV (`name,url`) and run once with `--manual-csv`.
