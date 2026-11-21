@@ -1,0 +1,1047 @@
+<PARSED TEXT FOR PAGE: 1 / 21>
+Phase 0 Decision Record v2 and Validation Milestone
+
+
+
+
+Phase 0 Decision Record v2 and Validation
+Milestone
+  ​Nov 21, 2026 · ​@Dee
+
+
+
+1. Decision record
+All five of your decisions are adopted as stated, and every correction you listed is
+addressed below. One structural change is proposed, not assumed: run the validation
+work as a separate, disposable prototype (VM1, section 5) before Phase 1, so the product's
+riskiest assumption, that we can find relevant companies from an ICP alone, is tested
+before any foundation is built. You can reject that and keep the slice after Phase 1.
+
+
+Your decisions and what they change
+
+  #           Decision                                   Effect on the architecture
+
+  1           Wedge: independent software studios,       Prompts, sample ICPs and the validation
+              product and design agencies, specialist    set target these three seller types and
+              technology consultants selling B2B         US prospects. The ICP schema, scoring
+              services; test discovery in the United     dimensions and research pipeline stay
+              States                                     industry-agnostic. No industry-specific
+                                                         modules are built.
+
+  2           Discovery: evaluate Exa as primary, plus   Exa and Brave are compared in VM1 on
+              company-owned website research and         coverage, price and storage rights
+              CSV or URL import; compare at least one    (section 4). Tavily is not a candidate (its
+              alternative                                terms bar storing output). Provider
+                                                         output is treated as transient until rights
+                                                         are confirmed.
+
+  3           US-first sending, subject to safeguards    Research state and send eligibility
+              and legal review; no UK or EU sending      become two separate fields. Eligibility is
+              until reviewed; research and sending       computed from a jurisdiction policy
+              eligibility independent                    table; unknown or UK/EU recipients are
+                                                         blocked by default. Research still runs for
+                                                         any market.
+
+  4           Manual reply marking; no Gmail inbox-      Gmail scope is gmail.send only. No
+              reading scopes                             reply sync, no bounce reading (section
+                                                         3).
+
+
+
+
+                                                                                               Page 1 of 21
+<PARSED TEXT FOR PAGE: 2 / 21>
+Phase 0 Decision Record v2 and Validation Milestone
+
+
+
+
+  #           Decision                                    Effect on the architecture
+
+  5           Gmail first; Microsoft 365 deferred until   The email adapter interface stays
+              there is demand evidence                    provider-neutral; no Outlook code is
+                                                          written. Demand evidence is tracked as a
+                                                          beta question.
+
+
+
+Corrections you required
+
+  #           Correction                                  Where addressed
+
+  R1          Remove Apollo bring-your-own-key as an      Apollo is out of scope until its permitted
+              assumed workaround                          use is explicitly confirmed in writing
+                                                          (section 4).
+
+  R2          Confirm storage, display and                Section 4. Brave and Tavily terms were
+              redistribution rights for all search and    read; Hunter's were read (summarised);
+              contact providers, including Hunter         Exa's own terms could not be opened in
+                                                          this session and stay unconfirmed.
+
+  R3          Separate source-supported claims from       New evidence levels (section 2).
+              independently verified facts
+
+  R4          Explicit unknown send outcome;              Section 3.
+              duplicate prevention without assuming
+              Gmail idempotency
+
+  R5          Reconcile bounce monitoring and             Section 3: those features are removed or
+              sender-health with send-only scope          replaced with controls that need no
+                                                          inbox access.
+
+  R6          Discovery-quality test: find relevant       VM1 test A (section 5).
+              companies from an ICP without handed
+              URLs
+
+  R7          Measurable qualification quality: false     VM1 test B (section 5).
+              positives, missed relevant companies,
+              evidence accuracy, decision-maker
+              accuracy
+
+  R8          Costs on current vendor prices,             Section 6.
+              separated into verified, estimated and
+              measured, three scenarios, no early
+              subscriptions
+
+
+
+
+                                                                                               Page 2 of 21
+<PARSED TEXT FOR PAGE: 3 / 21>
+Phase 0 Decision Record v2 and Validation Milestone
+
+
+
+
+  #           Correction                                           Where addressed
+
+  R9          Stay flexible, but build nothing for                 Scope rule in decision 1; nothing
+              hypothetical industries                              industry-specific beyond sample ICPs
+                                                                   and test data.
+
+
+
+
+2. Evidence model: supported is not verified
+You are right that an excerpt on a page proves only that the page says something, not
+that it is true. The word "verified" is therefore retired for page excerpts and reserved
+for claims that were corroborated or checked by a person. This replaces the single
+ verification field in the v1 schema.
+
+
+  Level                                  Meaning                How it is reached        May appear in a
+                                                                                         draft as fact?
+
+   source_supported                      The cited page,        Deterministic check      Only if attributed to
+                                         fetched by us on a     that the excerpt is in   the source, for
+                                         recorded date,         the fetched text, plus   example "your site
+                                         contains text that     a model judgment         says you build
+                                         states the claim       that the excerpt         mobile apps"
+                                                                supports the claim
+
+   corroborated                          Two or more            Rule-based: sources      Yes, for descriptive
+                                         independent sources    must have different      claims
+                                         agree, or one          origins; a company's
+                                         authoritative record   own pages count
+                                         confirms it (for       once
+                                         example a
+                                         government business
+                                         registry)
+
+   user_verified                         A workspace member     Explicit click,          Yes
+                                         confirmed it           recorded in the audit
+                                                                log
+
+   inferred                              The model's            Model output with        No; may inform
+                                         interpretation of      the supporting           scoring and a
+                                         other evidence         evidence ids             reviewer's note
+
+   unknown                               Not found or           Default                  No
+                                         conflicting
+
+
+Two more fields on every evidence record.
+
+
+
+                                                                                                        Page 3 of 21
+<PARSED TEXT FOR PAGE: 4 / 21>
+Phase 0 Decision Record v2 and Validation Milestone
+
+
+
+
+        source_authority : first-party (the company about itself), third-party, directory, or
+       search snippet. First-party pages are good evidence of what a company says it does,
+       and weak evidence of size, clients, funding or growth.
+        claim_type : descriptive (services, location), quantitative (headcount, funding),
+       temporal (hiring, launches) or intent. Quantitative and temporal claims need
+        corroborated , or must carry a date; intent is never recorded as a fact, only as an
+       inference.
+
+Rules that follow
+
+   1. Draft generation receives only corroborated and user_verified facts, plus
+        source_supported claims in attributed form. It never receives inferred items as
+       facts.
+   2. Scores count source_supported evidence at lower weight than corroborated , and
+       the explanation says which was used.
+   3. Evidence older than a set age (to be chosen during VM1) is shown as stale and is
+      excluded from drafts until refreshed.
+   4. The excerpt check is stored with a content hash and fetch time, so a reviewer can see
+       exactly what was fetched.
+   5. VM1 measures two separate rates: how often source_supported claims are actually
+       supported by their excerpt, and how often corroborated claims are actually true
+       (section 5, test B).
+
+
+3. Email sending under a send-only scope
+The design chooses at-most-once sending: an ambiguous result becomes unknown , is
+never retried automatically, and waits for a person to resolve it. A missed send is
+acceptable; a duplicate is not. Bounce reading, reply sync and automatic sender-health
+from bounce rates are removed from the MVP, because they need mailbox access we have
+decided not to request.
+
+What the sources show. Google's users.messages.send reference describes a method
+that takes a message and returns a message; in the excerpts I could read there is no
+idempotency key, so the design assumes Gmail provides none. I did not read the full
+reference page, so Phase 0 includes confirming that. Other mail APIs advertise their own
+idempotency headers (for example Resend), which is a reason not to assume Gmail has
+one.
+
+
+
+
+                                                                                         Page 4 of 21
+<PARSED TEXT FOR PAGE: 5 / 21>
+Phase 0 Decision Record v2 and Validation Milestone
+
+
+
+
+Send outcomes
+
+  Outcome              When it is recorded            Automatic retry?          What happens next
+
+   sent                Gmail returned a success       No                        Stored with the Gmail
+                       response with a message                                  message id. UI says
+                       id                                                       "accepted by Gmail",
+                                                                                never "delivered".
+
+   failed              A definite rejection           Only after the cause is   Shown with the reason;
+                       before acceptance (for         fixed, and only by a      the draft returns to
+                       example invalid request,       user action               approved.
+                       revoked authorization,
+                       quota exceeded
+                       response)
+
+   unknown             Timeout, network failure       Never                     Address is placed on
+                       after the request was                                    hold. The user checks
+                       sent, a server-side error,                               their own Sent folder
+                       an unparseable response,                                 and chooses "it was
+                       or a worker that crashed                                 sent" or "it was not sent,
+                       after claiming the send                                  allow resend". The
+                                                                                choice is audited.
+
+
+
+Preventing duplicates without native idempotency
+   1. One logical send, one database row. A unique constraint on (workspace, recipient
+       address, campaign) allows only one outreach message per recipient per campaign; a
+       second approval attempt fails at the database.
+   2. Claim before calling. The sender job moves the row from queued to sending with an
+       atomic compare-and-set that records an attempt id. Only the job that wins the claim
+       may call Gmail.
+   3. No automatic retry at the send step. The job platform's retry setting is zero for this
+       step. Earlier steps (rendering, suppression and eligibility checks) can retry freely.
+   4. Crash recovery marks unknown . A row stuck in sending past a timeout is moved to
+      unknown by a sweeper, never back to queued .
+   5. Address hold. While any message to an address is unknown , no other message to that
+       address can be claimed.
+   6. Double-click and replay tests are acceptance criteria (section 5, test E).
+
+The cost is that a real timeout needs a person. Because we cannot read the Sent folder
+under gmail.send , there is no safe automatic check. That trade is deliberate.
+
+
+
+
+                                                                                                    Page 5 of 21
+<PARSED TEXT FOR PAGE: 6 / 21>
+Phase 0 Decision Record v2 and Validation Milestone
+
+
+
+
+Bounce and sender health: what we promise now
+
+  v1 promise                                          Status             Replacement that needs no inbox
+                                                                         access
+
+  Bounce tracking                                     Removed            A "mark as bounced" action; marking
+                                                                         suppresses the address at once. The
+                                                                         UI never claims an address bounced
+                                                                         or was delivered on its own.
+
+  Automatic bounce-rate                               Removed            A hard cap on sends per account per
+  circuit breaker                                                        day and per week, plus a manual
+                                                                         pause.
+
+  Reply detection                                     Removed (your      Manual reply marking, which stops
+                                                      decision 4)        follow-ups to that contact.
+
+  Delivery status                                     Narrowed           Only what the API response
+                                                                         confirms: accepted or failed.
+
+  Sender-health checks                                Narrowed           DNS checks of the sender domain's
+                                                                         SPF, DKIM and DMARC records,
+                                                                         shown as warnings before sending
+                                                                         is enabled. Bounce and complaint
+                                                                         rates are not visible to us.
+
+  Unsubscribe handling                                Kept, redesigned   Every message carries a link to a
+                                                                         hosted opt-out page; an opt-out
+                                                                         writes to the suppression list
+                                                                         immediately. Opt-outs sent as
+                                                                         replies depend on the user marking
+                                                                         them.
+
+  Sending limits                                      Kept               Caps set well under Gmail's own
+                                                                         limits, which Google lists at 2,000
+                                                                         messages a day per Workspace user
+                                                                         and which a third-party guide puts
+                                                                         near 500 for consumer accounts
+                                                                         (Nylas). Beta default is a low daily
+                                                                         cap that you set.
+
+
+
+US safeguards the sender must satisfy
+The FTC's CAN-SPAM guide says opt-outs must be honoured within 10 business days, the
+opt-out mechanism must keep working for at least 30 days after sending, and the
+message must include a valid physical postal address; a third-party source notes the Act
+
+
+
+                                                                                                         Page 6 of 21
+<PARSED TEXT FOR PAGE: 7 / 21>
+Phase 0 Decision Record v2 and Validation Milestone
+
+
+
+
+also covers B2B email (Termly). The product therefore requires a postal address in the
+sender profile, blocks sending without it, and keeps opted-out addresses suppressed
+permanently. This is a requirements list for your legal review, not legal advice.
+
+
+Eligibility is independent of research
+ research_state and send_eligibility are separate fields. Eligibility is computed from
+the contact's country and recipient type against a jurisdiction_policy table, plus
+suppression, postal-address and hold checks. Default values: US recipients with a known
+type are eligible subject to safeguards; UK, EU and unknown jurisdictions are blocked
+until you enable a policy after review.
+
+
+4. Provider rights: storage, display, redistribution
+No search or contact provider is confirmed to allow persistent storage today. Until each
+one is, every provider's output is treated as transient, and the product stores only data
+it derived from the company's own website. This is my reading of vendor terms, not legal
+advice; the rights that matter should be confirmed in writing with each vendor and
+reviewed by your lawyer.
+
+
+  Provider                 Storing results            Displaying to   Redistribution   Status
+                                                      end users
+
+  Exa                      Unconfirmed.               Unconfirmed     Unconfirmed      Ask Exa in
+                           Exa's terms of                                              writing: may we
+                           service PDF                                                 persist result
+                           could not be                                                URLs, domains
+                           opened in this                                              and short
+                           session. A third-                                           excerpts for our
+                           party blog says                                             customers, and
+                           persistent                                                  show them in the
+                           caching is                                                  product? Pricing:
+                           forbidden; I treat                                          Exa pricing docs.
+                           that as an
+                           unreliable lead,
+                           not a finding.
+
+
+
+
+                                                                                                  Page 7 of 21
+<PARSED TEXT FOR PAGE: 8 / 21>
+Phase 0 Decision Record v2 and Validation Milestone
+
+
+
+
+  Provider                 Storing results            Displaying to      Redistribution    Status
+                                                      end users
+
+  Brave                    Terms of Use               Allowed within     Barred (resale,   Brave's API page
+  Search API               (updated 11 Feb            the customer       sublicensing,     says plans with
+                           2026) bar                  application; end   derivative        storage rights
+                           storing, caching           users must be      works).           exist; the terms
+                           or building a              bound to similar                     page I read
+                           database of                terms.                               describes no
+                           results except                                                  such carve-out
+                           transient                                                       except via an
+                           storage, and bar                                                Order Form. Ask
+                           keeping results                                                 for the storage-
+                           after the                                                       rights plan terms
+                           agreement ends.                                                 and price before
+                                                                                           relying on it.
+
+  Tavily                   Search API                 Allowed for        Barred.           Not a candidate
+                           Agreement bars             responding to                        for any design
+                           storing or                 inquiries on                         that keeps
+                           caching output             your website.                        results.
+                           and bars
+                           redistribution
+                           and machine-
+                           learning use.
+
+
+
+
+                                                                                                      Page 8 of 21
+<PARSED TEXT FOR PAGE: 9 / 21>
+Phase 0 Decision Record v2 and Validation Milestone
+
+
+
+
+  Provider                 Storing results            Displaying to   Redistribution      Status
+                                                      end users
+
+  Hunter                   Terms of Service           Not stated      Not stated; the     Unconfirmed.
+                           (as summarised                             competitive-        Do not integrate
+                           by a model                                 service clause is   until Hunter
+                           reading the                                a real risk for a   confirms in
+                           page): silent on                           prospecting         writing that our
+                           storing,                                   product.            use is permitted.
+                           exporting and
+                           redistributing
+                           data. They bar
+                           building "a
+                           similar or
+                           competitive
+                           service" without
+                           consent, and say
+                           nothing explicit
+                           about API use
+                           inside a product
+                           serving other
+                           customers.
+                           Hunter's content
+                           policy excludes
+                           bulk export of
+                           personal data for
+                           redistribution or
+                           resale.
+
+  Apollo                   Not assessed                                                   Out of scope
+                           further.                                                       until the
+                                                                                          intended
+                                                                                          integration is
+
+                                                                                          explicitly
+                                                                                          permitted in
+                                                                                          writing (R1).
+
+
+
+
+                                                                                                      Page 9 of 21
+<PARSED TEXT FOR PAGE: 10 / 21>
+Phase 0 Decision Record v2 and Validation Milestone
+
+
+
+
+  Provider                 Storing results            Displaying to     Redistribution   Status
+                                                      end users
+
+  Company-                 Not a provider.            We show a short   n/a              Respect
+  owned                    We fetch pages             excerpt and a                      robots.txt and
+  websites                 ourselves.                 link.                              site terms; store
+                                                                                         a short excerpt,
+                                                                                         content hash
+                                                                                         and fetch time,
+                                                                                         not full page
+                                                                                         copies. Include in
+                                                                                         legal review.
+
+
+
+Design consequences
+       Each provider adapter has a may_persist_results flag, default false. With it false,
+       the adapter returns results to the job in memory; the database stores only our query
+       log (query text, provider, time, cost) and the candidate domains that we then fetch
+       and check ourselves. Whether even a domain may be kept is part of the written
+       confirmation to request.
+       Evidence records are built from pages we fetch directly, so their storage is governed
+       by our own handling of company websites, not by a search vendor's terms.
+       "Do not contact" and "already rejected" memory relies on our own records of domains
+       and addresses the user acted on, which is the user's own data.
+       Contact discovery in VM1 uses team and contact pages on company websites only. A
+       paid contact provider is added only after its rights are confirmed.
+
+
+Alternative comparison in VM1
+Exa and Brave run on the same ICPs. Compared on: relevant companies found per query,
+cost per relevant company, share of results from which we can fetch own-site pages, and
+the written storage and display position of each vendor. The comparison result decides
+the primary provider; if neither grants storage in writing, the transient-only design stays.
+
+
+5. Validation milestone VM1: acceptance criteria
+VM1 answers one question before anything else is built: given an ICP and no URLs, can
+the system find relevant US companies, explain them with accurate evidence, and name
+the right person? It is a disposable prototype: single user, no authentication or interface,
+
+
+
+
+                                                                                                    Page 10 of 21
+<PARSED TEXT FOR PAGE: 11 / 21>
+Phase 0 Decision Record v2 and Validation Milestone
+
+
+
+
+run locally from scripts, results written to a report. Code worth keeping (schemas,
+adapter interfaces, the excerpt check) is moved into Phase 1 only after review. Thresholds
+below marked proposed are mine; you set the final values before VM1 starts.
+
+
+Inputs I need from you
+       Three seller profiles with ICPs in your wedge, for example a frontend studio targeting
+       small US software agencies, a product design agency targeting early-stage US B2B
+       software companies, and a specialist technology consultancy targeting a defined US
+       sector. I will draft candidates for you to edit.
+       Two labelers (you plus one other person) for about 20 to 25 labeler-hours in total. This
+       is my estimate: about 150 companies, two labelers, five minutes each.
+       Server-side API keys for the providers under test, and a spending cap (proposed: $100
+       across VM1).
+
+
+Test A: discovery quality (no URLs supplied)
+For each ICP, build a reference list first: two people independently find at least 30
+qualifying companies by hand, without using the system. Then run discovery with the ICP
+only, on Exa and on Brave.
+
+
+  Metric                                         How measured                         Proposed threshold
+
+  Precision of the top 50                        Two labelers judge each:             At least 60% relevant, per
+  results                                        relevant to the ICP, not relevant,   ICP
+                                                 or cannot tell
+
+  Recall against the                             Share of reference companies         At least 40%
+  reference list                                 the system finds within 200
+                                                 results
+
+  Real, reachable                                Result resolves to a canonical       At least 95%
+  companies                                      company website that loads
+
+  Duplicates after                               Same company under different         At most 2%
+  deduplication                                  URLs
+
+  Exclusion violations                           Results in excluded countries or     0
+                                                 types
+
+  Own-site fetchability                          Share of results where we can        At least 80%
+                                                 fetch the home page and at
+                                                 least one about or team page
+
+
+
+
+                                                                                                             Page 11 of 21
+<PARSED TEXT FOR PAGE: 12 / 21>
+Phase 0 Decision Record v2 and Validation Milestone
+
+
+
+
+  Metric                                         How measured                         Proposed threshold
+
+  Cost per relevant                              Provider spend divided by            Recorded, compared
+  company found                                  relevant results                     between providers
+
+  Provider choice                                Coverage, cost and written           A recommendation with
+                                                 storage terms side by side           evidence
+
+
+
+Test B: qualification quality
+Humans label about 150 companies from test A (and from CSV imports) against each ICP
+as strong, potential, weak or disqualified, with a reason. The system scores the same
+companies blind.
+
+
+  Metric                                    Definition                            Proposed threshold
+
+  Label reliability                         Agreement between the two             At least 0.6; disagreements are
+                                            labelers (Cohen's kappa)              resolved before scoring is
+                                                                                  judged
+
+  False positives                           Companies the system calls            At most 15%
+                                            strong that humans label weak or
+                                            disqualified, as a share of system
+                                            strong matches
+
+  Rejected relevant                         Companies humans label strong         At most 20%
+  companies                                 that the system calls weak or
+                                            disqualified, as a share of human
+                                            strong matches
+
+  Rank quality                              Share of human strong matches         Recorded; target to set after
+                                            in the system's top 20% by score      first run
+
+  Source-supported                          Of at least 200 sampled               At least 95%
+  accuracy                                   source_supported claims, the
+                                            share whose excerpt really
+                                            supports the claim
+
+  Corroborated                              Of sampled corroborated               At least 95%
+  accuracy                                  claims, the share that are actually
+                                            true (checked by a person
+                                            against primary sources)
+
+  Unsupported claims                        Sentences in 50 generated drafts      0
+  in drafts                                 that assert something not in the
+                                            allowed facts
+
+
+
+
+                                                                                                           Page 12 of 21
+<PARSED TEXT FOR PAGE: 13 / 21>
+Phase 0 Decision Record v2 and Validation Milestone
+
+
+
+
+  Metric                                    Definition                          Proposed threshold
+
+  Decision-maker top-1                      Where a person can find the right   At least 70%
+  accuracy                                  decision-maker, the share where
+                                            the system names the same
+                                            person and title
+
+  Wrong-person rate                         Share of named decision-makers      At most 5%
+                                            who are wrong or no longer at the
+                                            company
+
+  Honest absence                            When no decision-maker is found,    100% of cases
+                                            the system says so rather than
+                                            guessing
+
+  Fabricated emails                         Any email shown as verified         0
+                                            without provider or verifier
+                                            evidence
+
+
+
+Test C: measured cost and time
+Record cost and wall-clock time for every job. Report cost per researched company, per
+qualified prospect and per usable draft, by step, and the failure rate per step. Pass: every
+figure is recorded; each is within 2 times of the estimate in section 6, or the estimate is
+replaced with the measured value.
+
+
+Test D: provider rights gate
+Pass: for each provider used in VM1, either written confirmation of what may be stored
+and displayed, or a documented decision to treat its output as transient. Hunter and
+Apollo are not used unless their rights are confirmed.
+
+
+Test E: sending safety (no real prospects)
+Send 20 messages from a test Gmail account to addresses you own, using gmail.send
+only.
+
+
+  Check                                                        Pass
+
+  Double-click on Send, 100 trials                             Exactly one send each time
+
+  Job replay after a simulated crash, 100                      No second send; row ends in unknown or sent
+  trials
+
+
+
+
+                                                                                                      Page 13 of 21
+<PARSED TEXT FOR PAGE: 14 / 21>
+Phase 0 Decision Record v2 and Validation Milestone
+
+
+
+
+  Check                                               Pass
+
+  Simulated timeout and network error                 Outcome recorded as unknown , no automatic
+                                                      retry, address on hold
+
+  Resolution flow                                     "It was sent" and "allow resend" both work and
+                                                      are audited
+
+  Opt-out link                                        Opt-out writes to suppression at once; later
+                                                      sends to that address are blocked
+
+  Daily cap                                           Sends beyond the cap are refused
+
+  Eligibility                                         A UK or unknown-jurisdiction recipient cannot
+                                                      be sent to, while research still completes
+
+  Postal address                                      Sending is blocked until the sender profile has
+                                                      one
+
+
+
+Test F: Gmail verification readiness
+Pass: the OAuth consent screen and privacy policy exist, the gmail.send verification
+requirements are listed, and the submission path and timing are known. I will not claim a
+verification timeline until Google's current process page has been read in full.
+
+
+Decision gate
+VM1 ends with a short report: every metric, its threshold, pass or fail, the provider
+recommendation, measured costs, and recommended changes. Go to Phase 1 if tests A, B,
+D and E pass. If A fails, change the discovery approach, narrow the ICP, or add a licensed
+data source before proceeding. If B fails on evidence accuracy, fix the evidence pipeline
+before any outreach work. Phase 1 starts only on your approval of the report.
+
+
+6. Revised operating costs
+On current list prices the estimate falls to about $0.06 of variable cost per researched
+company, and VM1 should cost roughly $40 with no paid subscriptions. Three kinds of
+number appear below and are kept apart: verified (a price read from a vendor or reputable
+source), estimated (my assumption), and measured (none yet; VM1 produces them).
+Qualification by the larger model is about two thirds of research cost, so model choice
+matters more than search cost.
+
+
+
+
+                                                                                                 Page 14 of 21
+<PARSED TEXT FOR PAGE: 15 / 21>
+Phase 0 Decision Record v2 and Validation Milestone
+
+
+
+
+Verified prices (read 2026-11-21)
+
+  Item                                           Price                             Source and caveat
+
+  Exa search                                     $7 per 1,000 requests (10         Exa pricing docs; lite rate from a
+                                                 results); $4 per 1,000 for the    third-party review dated Oct
+                                                 lite type; deep search $12 to     2026. Free credits are listed on
+                                                 $15; page contents $1 per         Exa's pricing page; amount
+                                                 1,000 pages                       varies by source, so confirm.
+
+  Brave Search API                               About $4 to $5 per 1,000          Brave API page; range from a
+                                                 queries; $5 of free credit a      third-party tracker (Sept 2026).
+                                                 month                             Storage-rights plan price not
+                                                                                   found.
+
+  Claude Haiku 5.5                               $0.10 input / $0.50 output per    Reported by secondary sources
+                                                 million tokens for prompts up     quoting Anthropic's pricing
+                                                 to 100K; the same text            (Mixed). I could not open
+                                                 produces about 30% more           Anthropic's own page, so treat
+                                                 tokens than on Haiku 4.5          as reported.
+
+  Claude Sonnet 5.5                              $2 input / $10 output per         Apidog, secondary source;
+                                                 million tokens; batch             same caveat.
+                                                 processing half price
+
+  Supabase                                       Free plan auto-pauses after       Supabase pricing and third-
+                                                 about a week idle; Pro is $25 a   party guides.
+                                                 month with a $10 compute
+                                                 credit
+
+  Vercel                                         Hobby is non-commercial           Vercel fair use policy.
+                                                 only; Pro is $20 per seat per
+                                                 month
+
+  Trigger.dev                                    Free plan with $5 of monthly      Third-party calculator
+                                                 credit; Pro $50                   (BudgetForge). Inngest figures
+                                                                                   conflict across sources and are
+                                                                                   unverified.
+
+  Hunter (not used until                         Free 50 credits a month;          Hunter pricing
+  rights confirmed)                              Starter $49 for 2,000 credits
+
+
+
+
+                                                                                                              Page 15 of 21
+<PARSED TEXT FOR PAGE: 16 / 21>
+Phase 0 Decision Record v2 and Validation Milestone
+
+
+
+
+Estimated cost per researched company (uses the verified prices above)
+
+  Step                                        Assumption                                    Cost (USD,
+                                                                                            estimated)
+
+  Discovery                                   1.5 Exa search requests per company           0.011
+                                              researched
+
+  Own-site fetching                           Our own fetcher; no provider fee              0.000
+
+  Extraction                                  Haiku 5.5, 25k input and 3k output tokens,    0.005
+                                              plus 30% token inflation
+
+  Qualification rationale                     Sonnet 5.5, 8k input and 1.5k output tokens   0.031
+
+  Research subtotal                                                                         0.047
+
+  Draft with three                            Sonnet 5.5, 4k input and 0.6k output per      0.042 per draft
+  versions                                    version, for the 25% that qualify
+
+
+Blended cost: 0.047 + 0.25 × 0.042 = about $0.058 per researched company, or about
+$0.23 per qualified prospect with a draft. The 25% qualification rate and the token counts
+are guesses. These figures are lower than my first estimate mainly because current model
+prices are lower and contact lookup through a paid provider is excluded.
+
+
+
+
+                                                                                                          Page 16 of 21
+<PARSED TEXT FOR PAGE: 17 / 21>
+Phase 0 Decision Record v2 and Validation Milestone
+
+
+
+
+Scenarios
+
+ Scenario              Volume a month                 Variable (est.)   Fixed (verified where      Total (est.)   Measured
+                                                                        marked)
+
+ Prototype             About 600                      about $35,        $0: runs locally,          about $35 to   VM1 fills this in
+ (VM1)                 researched, one                within the        Supabase Free,             $40
+                       time                           $100 cap          provider free credits,
+                                                                        no Vercel
+
+ Private beta          10 workspaces ×                $58               $45 verified (Supabase     about $105,    After beta
+                       100 = 1,000                                      Pro $25 and one Vercel     up to about    month 1
+                                                                        Pro seat $20); job         $155
+                                                                        platform on a free tier
+                                                                        unless exceeded (up to
+                                                                        +$50); monitoring and
+                                                                        domain not priced
+
+ Early                 50 workspaces ×                $870              About $150 to $250 (my     about $1,020 After
+ production            300 = 15,000                                     estimate: larger           to $1,120    production
+                                                                        database compute, two                   month 1
+                                                                        or three Vercel seats, a
+                                                                        paid job plan,
+                                                                        monitoring)
+
+
+Avoiding subscriptions until necessary. The prototype needs none. The first unavoidable
+paid items are Supabase Pro (to stop auto-pausing) and Vercel Pro (Hobby bars
+commercial use), both when the beta begins. The job platform stays on a free tier until
+measured volume exceeds it.
+
+
+Costs not yet priced
+Storage-rights plans from search vendors; any contact-data provider; legal review of
+outreach, privacy terms and website fetching; Gmail OAuth verification; error monitoring;
+payment fees; support time. None of these is in the totals.
+
+
+7. Revised risk summary
+The largest risk is now product, not technical: nobody has shown that discovery from
+an ICP alone returns relevant companies. Provider terms moved from a footnote to a
+design constraint, and several v1 promises were removed because they needed inbox
+access. Legal items are risks to put before a lawyer, not conclusions.
+
+
+
+
+                                                                                                                          Page 17 of 21
+<PARSED TEXT FOR PAGE: 18 / 21>
+Phase 0 Decision Record v2 and Validation Milestone
+
+
+
+
+  #           Risk                                    Change       Mitigation now             Tested by
+                                                      from v1
+
+  1           Discovery from an ICP                   New,         Provider comparison;       VM1 test A
+              returns few relevant                    highest      own-site research; CSV
+              companies                                            and URL import as a
+                                                                   first-class path; narrow
+                                                                   ICPs
+
+  2           Qualification is wrong                  Sharpened    Labelled evaluation set,   VM1 test B
+              or unexplained: false                                error rates with
+              positives waste a user's                             thresholds, scorer
+              outreach, missed                                     regression tests
+              companies hide the
+              best prospects
+
+  3           Claims shown as fact                    Corrected    Five evidence levels;      VM1 test B
+              that are only source                                 drafts use only
+              statements                                           corroborated or user-
+                                                                   verified facts, or
+
+                                                                   attribute the source
+
+  4           Provider terms forbid                   Elevated     Transient-by-default       VM1 test D
+              what the product does                                adapters; written
+              (storing, displaying,                                confirmations; Apollo
+              resale, competing                                    out; Hunter and Exa
+              service)                                             unconfirmed
+
+  5           Duplicate or phantom                    Reworked     At-most-once design,       VM1 test E
+              sends                                                 unknown outcome,
+                                                                   address hold, no
+                                                                   automatic send retries
+
+  6           Deliverability harm                     New          Low caps, DNS              VM1 test E;
+              with no bounce or                       limitation   authentication             beta review
+              complaint visibility                                 warnings, manual
+                                                                   bounce marking,
+                                                                   conservative beta cap.
+                                                                   Remaining gap: we
+                                                                   cannot see problems
+                                                                   building up, so beta
+                                                                   senders are few and
+                                                                   monitored by hand.
+
+
+
+
+                                                                                                      Page 18 of 21
+<PARSED TEXT FOR PAGE: 19 / 21>
+Phase 0 Decision Record v2 and Validation Milestone
+
+
+
+
+  #           Risk                                    Change      Mitigation now             Tested by
+                                                      from v1
+
+  7           Anti-spam and privacy                   Narrowed    US-only eligibility by     Legal review
+              law (US first)                                      default; postal address    before beta
+                                                                  and opt-out
+                                                                  requirements enforced;
+                                                                  UK and EU sending
+                                                                  blocked until reviewed
+
+  8           Prompt injection and                    Unchanged   Content treated as data,   Hostile-page
+              malicious pages                                     no action-taking tools     set in VM1
+                                                                  for the model, human
+                                                                  approval for every send
+
+  9           Cross-tenant data                       Unchanged   Applies from Phase 1:      Phase 1
+              exposure                                            row-level security,        acceptance
+                                                                  composite keys,
+                                                                  automated tenancy
+                                                                  tests
+
+  10          Cost overrun                            Lowered     Current prices, per-run    VM1 test C
+                                                                  cost log, VM1 spending
+                                                                  cap, model routing
+
+  11          Gmail OAuth                             Narrowed    gmail.send is the only     VM1 test F
+              verification takes                                  scope (a sensitive
+              longer than planned                                 scope: verification
+                                                                  without the restricted-
+                                                                  scope security
+                                                                  assessment, per
+                                                                  Google's scope list).
+                                                                  Timeline unconfirmed.
+
+  12          Narrow wedge limits                     New         Deliberate: a quality-     Beta feedback
+              the market                                          first launch.
+                                                                  Architecture stays
+                                                                  industry-agnostic.
+
+  13          Users cannot resolve                    New         Clear resolution screen;   Beta review
+              unknown sends quickly,                              measure frequency in
+              causing support load                                beta
+
+
+
+
+                                                                                                     Page 19 of 21
+<PARSED TEXT FOR PAGE: 20 / 21>
+Phase 0 Decision Record v2 and Validation Milestone
+
+
+
+
+8. Approvals requested (kept separate)
+Two separate approvals are requested, and neither starts Phase 1. Approving the
+architecture does not approve VM1, and approving VM1 does not approve Phase 1.
+
+
+Approval 1: updated architecture
+This covers sections 1 to 4 and 7 of this record: the decisions, the five-level evidence
+model, the at-most-once send design with the unknown outcome, the reduced bounce
+and sender-health scope, the transient-by-default provider rule, and the US-first eligibility
+model.
+
+       Approve the architecture as written, or list the changes you want.
+
+
+Approval 2: validation milestone VM1
+This covers section 5 and the cost cap in section 6.
+
+       Approve VM1 as a disposable prototype that runs before Phase 1 (or keep the slice
+       after Phase 1).
+       Set the final thresholds in tests A and B (my proposals are marked as proposed).
+       Approve the spending cap (proposed: $100) and the use of Exa and Brave free credits.
+       Provide the three seller profiles and ICPs (or approve my drafts) and name the second
+       labeler.
+
+
+Things you may need to do outside this project
+       Ask Exa and Brave in writing about storage, display and redistribution (section 4). I
+       can draft those requests.
+       Ask Hunter whether API use inside a multi-tenant prospecting product is permitted, if
+       you want it considered later.
+       Engage a lawyer for the US outreach flow, the sender postal-address and opt-out
+       design, and the handling of company-website content.
+
+
+Open questions I could not settle from sources
+       Exa's own terms on storage and display (the document could not be opened here).
+       The price and terms of Brave's storage-rights plan.
+       Whether the full Gmail send reference documents any idempotency behaviour, and
+       Google's current verification timeline for gmail.send .
+       Inngest's current pricing, which conflicts across sources.
+       Official Anthropic prices, which I read only through secondary sources.
+
+
+
+
+                                                                                        Page 20 of 21
+<PARSED TEXT FOR PAGE: 21 / 21>
+Phase 0 Decision Record v2 and Validation Milestone
+
+
+
+
+Nothing will be built until you approve.
+
+
+
+
+                                                      Page 21 of 21
