@@ -4,7 +4,7 @@
 Read `README.md`, `docs/HANDOFF.md`, `docs/DECISIONS.md`, `docs/PRODUCT-BRIEF.md`, and `docs/PROPOSED-VM1-REVISIONS.md`. Read original Phase 0 reports once they are uploaded to `docs/reviews/`.
 
 ## Authorization
-- The project is pre-build. No Phase 1 implementation, VM1 execution, paid API usage, or email sending has been authorized.
+- **Updated 2026-11-21:** The user approved the architecture **as a design** and authorized the **initial local VM1 pilot** (one ICP, 30–40 companies, no Gmail) with **$0 paid-API use**. The pilot may now be implemented. **Phase 1, spending, expanded VM1, and email sending remain unapproved.**
 - Separate user-approved decisions from proposals and external reviews.
 - Obtain explicit user approval before moving through any milestone gate.
 - Do not turn architecture or review requests into coding tasks.
@@ -25,4 +25,4 @@ Read `README.md`, `docs/HANDOFF.md`, `docs/DECISIONS.md`, `docs/PRODUCT-BRIEF.md
 5. Never commit keys, OAuth tokens, passwords or private user data.
 
 ## Next task
-Planning handoff only. Do not implement VM1 until its revised scope, testing plan, provider rights, and spending limits have been approved.
+Begin the **authorized local VM1 pilot only**. Read `docs/VM1-START-HERE.md` and the VM1 GitHub issue. Work with free, permitted methods only. If automated discovery requires unapproved API keys, paid usage, impermissible scraping, or storage rights, stop that step and report the blocker; never invent a passing evaluation. Do not implement Phase 1, Gmail, auth, billing, or a production SaaS.
