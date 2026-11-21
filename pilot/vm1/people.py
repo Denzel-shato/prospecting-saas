@@ -21,12 +21,12 @@ _ROLE = (
     r"(?:vp|vice president)(?: of)? engineering|"
     r"director of (?:engineering|delivery|technology)|engineering director|delivery director)"
 )
-_TITLE = rf"{_ROLE}(?:\s*(?:&|and|/|,)\s*{_ROLE})*"
-TITLE_ONLY_RE = re.compile(rf"^(?P<title>{_TITLE})(?:\s+(?:at|of)\s+[\w&.' -]{{2,40}})?$", re.I)
+_TITLE = rf"(?i:{_ROLE}(?:\s*(?:&|and|/|,)\s*{_ROLE})*)"  # title case-insensitive, names are not
+TITLE_ONLY_RE = re.compile(rf"^(?P<title>{_TITLE})(?:\s+(?i:at|of)\s+[\w&.' -]{{2,40}})?$")
 _NAME = r"[A-Z][a-zA-Z'’\-]+(?: [A-Z]\.)?(?: [A-Z][a-zA-Z'’\-]+){1,2}"
 _SEP = r"\s*[,|–—\-:·•]\s*"
-NAME_TITLE_RE = re.compile(rf"^(?P<name>{_NAME}){_SEP}(?P<title>{_TITLE})(?:\s+(?:at|of)\s+[\w&.' -]{{2,40}})?$")
-TITLE_NAME_RE = re.compile(rf"^(?P<title>{_TITLE}){_SEP}(?P<name>{_NAME})$", re.I)
+NAME_TITLE_RE = re.compile(rf"^(?P<name>{_NAME}){_SEP}(?P<title>{_TITLE})(?:\s+(?i:at|of)\s+[\w&.' -]{{2,40}})?$")
+TITLE_NAME_RE = re.compile(rf"^(?P<title>{_TITLE}){_SEP}(?P<name>{_NAME})$")
 NAME_ONLY_RE = re.compile(rf"^{_NAME}$")
 
 NAME_STOPWORDS = {
