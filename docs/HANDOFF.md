@@ -49,5 +49,13 @@ The other account could inspect a ZIP but could not read or write GitHub directl
 ## Fast path to execution (2026-11-21)
 Read `docs/VM1-START-HERE.md`: architecture A is approved *as a design*, and initial $0 paid-API VM1 pilot B is authorized. **Begin the local VM1 prototype, not Phase 1.** Confirm provider rights and do not incur any API cost.
 
+## VM1 pilot implementation kickoff — 2026-11-21
+
+- Explicit user approval is recorded in `docs/DECISIONS.md`: architecture approved *as design*, initial no-paid-API VM1 pilot authorized (one ICP, 30–40 companies, no Gmail). No Phase 1 or external spending permission.
+- Created [GitHub issue #1](https://github.com/Denzel-shato/prospecting-saas/issues/1) with the exact build-and-evaluate specification, deliverables, quality checks and stop rules.
+- Created `vm1-pilot` branch from current `main` for prototype development. **This is a branch setup, not an implemented prototype.**
+- The next Claude account should **implement the pilot** instead of producing another architecture review. If it cannot write to GitHub, it must return complete changed files or ZIP; the user can pass them to ChatGPT for review and commit.
+- No discovery, provider API calls, Gmail calls, tests, purchases or live evaluations have been run as part of this kickoff.
+
 ## Instructions for the next account
 Read all planning files and the original Phase 0 reports when available. Restate agreed choices separately from proposed revisions. Do not code or incur costs without explicit permission. Finish the session by updating this file with exact work done and commit/PR links.
