@@ -79,3 +79,20 @@ Branch `vm1-pilot`; see `git log` (latest commit recorded in the push). No PR op
 
 ## Instructions for the next account
 Read all planning files and the original Phase 0 reports when available. Restate agreed choices separately from proposed revisions. Do not code or incur costs without explicit permission. Finish the session by updating this file with exact work done and commit/PR links.
+
+## Issue #2 quality remediation — status update (2026-11-21; supersedes older VM1 status above)
+
+**The earlier statement that the pilot has not discovered any real companies is outdated.** The user ran a baseline live Wikidata pilot on their Mac, run `20261121T150320Z-live`, and supplied its report excerpt. The baseline completed with 500 raw Wikidata results, 266 after canonical-domain filtering, 40 evaluated companies, 33/40 successful homepages and 30/40 successful homepage-plus-secondary research. It produced 12 excluded, 24 weak, 4 possible, **0 strong**, 3 unsent drafts, and reported **$0.00** paid API spend. No human relevance labels were supplied, so the benchmark is **not** a claim of acceptable precision.
+
+**Issue #2 code implemented, pushed, but not yet validated live.** On `vm1-pilot`, implementation commit `74b95a26b4234463e4a21ec2cd436c8287c1ba31` and handoff commit `724f69663328d7b7f068e9ff701edca2673751dc` cover conservative company-type gating (agency/studio vs SaaS vendor/enterprise/unclear), stronger self-attribution for employee counts, role attribution for decision-makers, contextual checks for client-facing services, stricter scoring, and Wikidata record-based prequalification. There are 42 new regression tests; the prior implementing agent reported **124/124 offline tests passing**. No new live run was completed in that agent's environment, and the baseline JSON artifacts are only on the user's Mac.
+
+**Files of record:** Read `docs/ISSUE-2-HANDOFF.md` and `docs/VM1-QUALITY-REMEDIATION.md` for exact implementation status, reconstructed before/after examples, remaining risks, and baseline-labeling/live-rerun steps. `pilot/README.md` now summarizes these behaviors. These sections supersede the older “82 tests / no live companies / live networking untested” statements in this document; historical notes are retained for traceability.
+
+**Immediate next steps:**
+1. On the user's Mac, preserve `pilot/runs/20261121T150320Z-live` unchanged, copy it for reporting, and manually label the baseline top 20 before any new live test.
+2. Pull `vm1-pilot`; run `cd pilot && python3 -m unittest discover -s tests -t .` and `python3 scripts/issue2_before_after.py` locally. Record the actual outputs; do not replace evidence with the prior agent's assertion.
+3. Run Wikidata-only live pilot with verified TLS certificates; inspect the enriched SPARQL query's response or fallback, `discovery_coverage`, `selection_priorities`, company-type classifications, evidence attribution, weak/unclear volume and the true relevance of the ranked set. The enriched SPARQL query and its ordering were not previously tested live.
+4. Human-label the updated run's top 20, compare against the baseline, and decide whether a generic software-company Wikidata source adequately serves the targeted independent agency/studio ICP. If not, report inadequate coverage instead of manufacturing a successful result.
+5. Reachability (baseline 33/40) remains unaddressed; do not bypass robots.txt, SSRF protections or TLS. The exact Claude-generated docs drafts from another account were not available to this update; this entry was authored from the committed Issue #2 handoff and remediation documents.
+
+**Still outside scope:** Phase 1, Gmail/SMTP/sending, paid APIs, and Overpass without explicit usage-policy acknowledgment. Keep `vm1-pilot` separate from `main`.
