@@ -18,6 +18,24 @@ BLOCK_TAGS = {
     "address", "figure", "figcaption", "dd", "dt", "dl", "form", "button", "label", "body",
 }
 SKIP_TAGS = {"style", "noscript", "svg", "template"}
+VOID_TAGS = {"br", "img", "meta", "link", "input", "hr", "area", "base", "col", "embed", "source",
+             "track", "wbr"}
+HEADING_TAGS = {"h1", "h2", "h3", "h4", "h5", "h6"}
+# Structural/semantic context labels attached to every text block (used to reject testimonials,
+# client logos, blog/author bylines, navigation, etc. as first-party company claims).
+TAG_CTX = {"blockquote": "quote", "nav": "nav", "footer": "footer", "aside": "aside", "article": "editorial"}
+ATTR_CTX_TOKENS = {
+    "testimonial": "quote", "testimonials": "quote", "review": "quote", "reviews": "quote",
+    "quote": "quote", "quotes": "quote", "blockquote": "quote",
+    "client": "client", "clients": "client", "customer": "client", "customers": "client",
+    "logo": "client", "logos": "client", "partner": "client", "partners": "client",
+    "sponsor": "client", "sponsors": "client", "brand": "client", "brands": "client",
+    "blog": "editorial", "post": "editorial", "posts": "editorial", "news": "editorial",
+    "press": "editorial", "author": "editorial", "byline": "editorial", "podcast": "editorial",
+    "speaker": "editorial", "speakers": "editorial", "nav": "nav", "navbar": "nav", "menu": "nav",
+    "footer": "footer",
+}
+_TOKEN_SPLIT = re.compile(r"[^a-z0-9]+")
 MAX_BLOCK = 2000
 MAX_BLOCKS = 5000
 MAX_LINKS = 400
@@ -37,6 +55,16 @@ class PageData:
     blocks: list[str] = field(default_factory=list)
     links: list[tuple[str, str]] = field(default_factory=list)
     jsonld_raw: list[str] = field(default_factory=list)
+    # Parallel to ``blocks``: structural context labels and the heading chain above each block.
+    # Empty lists (e.g. a hand-built PageData) mean "context unknown", never "context is clean".
+    block_ctx: list[frozenset] = field(default_factory=list)
+    block_section: list[str] = field(default_factory=list)
+
+    def ctx_at(self, i: int) -> frozenset:
+        return self.block_ctx[i] if 0 <= i < len(self.block_ctx) else frozenset()
+
+    def section_at(self, i: int) -> str:
+        return self.block_section[i] if 0 <= i < len(self.block_section) else ""
 
     def verifiable_texts(self) -> list[str]:
         """Every string an excerpt may legitimately be copied from."""
@@ -79,12 +107,33 @@ class _Extractor(HTMLParser):
         self.in_jsonld = False
         self.jsonld_buf: list[str] = []
         self.in_other_script = False
+        self.stack: list[tuple[str, frozenset]] = []
+        self.block_ctx: list[frozenset] = []
+        self.block_section: list[str] = []
+        self.headings: dict[int, str] = {}
 
     def _flush(self) -> None:
         text = norm_ws("".join(self.buf))
         self.buf = []
         if text and len(self.blocks) < MAX_BLOCKS:
             self.blocks.append(text[:MAX_BLOCK])
+            labels: set[str] = set()
+            for _, lab in self.stack:
+                labels |= lab
+            self.block_ctx.append(frozenset(labels))
+            chain = " > ".join(self.headings[k] for k in sorted(self.headings))
+            self.block_section.append(chain.lower()[:300])
+
+    @staticmethod
+    def _labels(tag: str, a: dict[str, str]) -> frozenset:
+        labels = set()
+        if tag in TAG_CTX:
+            labels.add(TAG_CTX[tag])
+        for attr in ("class", "id", "itemprop", "itemtype", "data-testid", "role"):
+            for tok in _TOKEN_SPLIT.split(a.get(attr, "").lower()):
+                if tok in ATTR_CTX_TOKENS:
+                    labels.add(ATTR_CTX_TOKENS[tok])
+        return frozenset(labels)
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         a = {k.lower(): (v or "") for k, v in attrs}
@@ -113,6 +162,8 @@ class _Extractor(HTMLParser):
             self.a_text = []
         if tag in BLOCK_TAGS:
             self._flush()
+        if tag not in VOID_TAGS:
+            self.stack.append((tag, self._labels(tag, a)))
 
     def handle_endtag(self, tag: str) -> None:
         if tag == "script":
@@ -137,8 +188,19 @@ class _Extractor(HTMLParser):
                 absolute, _ = urldefrag(urljoin(self.base, href))
                 if urlsplit(absolute).scheme in ("http", "https") and len(self.links) < MAX_LINKS:
                     self.links.append((absolute, norm_ws("".join(self.a_text))))
+        if tag in HEADING_TAGS:
+            level = int(tag[1])
+            text = norm_ws("".join(self.buf))
+            for k in [k for k in self.headings if k >= level]:
+                del self.headings[k]
+            if text:
+                self.headings[level] = text[:80]
         if tag in BLOCK_TAGS:
             self._flush()
+        for i in range(len(self.stack) - 1, -1, -1):  # pop to the matching open tag, if any
+            if self.stack[i][0] == tag:
+                del self.stack[i:]
+                break
 
     def handle_data(self, data: str) -> None:
         if self.in_jsonld:
@@ -170,4 +232,6 @@ def parse_html(html: str, url: str) -> PageData:
         blocks=ex.blocks,
         links=ex.links,
         jsonld_raw=ex.jsonld_raw,
+        block_ctx=ex.block_ctx,
+        block_section=ex.block_section,
     )

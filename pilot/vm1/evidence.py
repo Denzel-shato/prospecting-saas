@@ -20,6 +20,8 @@ import re
 from dataclasses import asdict, dataclass, field
 from typing import Iterable, Iterator
 
+from .context import (NON_OFFERING_KINDS, NON_SELF_KINDS, THIRD_PARTY_CTX, UNRELIABLE_CTX,
+                      block_is_third_party, page_kind, sentence_bounds)
 from .discovery import Candidate
 from .htmlparse import PageData, norm_ws
 
@@ -31,7 +33,7 @@ UNKNOWN = "unknown"
 ASSERTABLE_LEVELS = frozenset({SOURCE_SUPPORTED, CORROBORATED, USER_VERIFIED})
 
 EXCERPT_CAP = 200
-MAX_EVIDENCE_PER_COMPANY = 40
+MAX_EVIDENCE_PER_COMPANY = 60
 
 STATE_ABBR = (
     "AL AK AZ AR CA CO CT DE FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM "
@@ -90,7 +92,9 @@ ENTITY_RE = re.compile(
     r"\b(?:software (?:studio|agency|development (?:company|agency|studio|firm|shop))|product studio|"
     r"digital (?:agency|studio|product studio)|development (?:studio|agency|shop)|"
     r"web (?:agency|studio|development (?:company|agency))|app development (?:company|agency)|"
-    r"engineering studio|design (?:and|&) development (?:studio|agency))\b", re.I)
+    r"engineering studio|design (?:and|&) development (?:studio|agency)|"
+    r"front-?end (?:agency|studio|shop|consultancy)|react (?:agency|studio|consultancy|development (?:shop|agency))|"
+    r"custom software (?:development )?(?:company|agency|studio|shop)|software consultancy)\b", re.I)
 STAFFING_HARD_RE = re.compile(
     r"\b(?:(?:it|tech|technology|software|engineering) )?(?:staffing|recruiting|recruitment) "
     r"(?:agency|firm|company|services|solutions|partner)\b|"
@@ -107,12 +111,64 @@ PORTFOLIO_RE = re.compile(
 HIRING_RE = re.compile(
     r"\b(?:we(?:'|’)re hiring|we are hiring|open (?:roles|positions)|join our team|careers)\b", re.I)
 
-_NUM = r"(\d{1,3}(?:,\d{3})+|\d{1,6})"  # "12,000" must not parse as "000"
-SIZE_PATTERNS = [
-    re.compile(rf"\b(?:team|staff|company|crew) of (?:about |around |over |roughly |approximately |nearly )?{_NUM}\b", re.I),
-    re.compile(rf"\b{_NUM}\+?\s+(?:full[- ]time\s+)?(?:employees|team members|engineers|developers|designers|people|professionals|specialists)\b", re.I),
-    re.compile(rf"\b(?:employs|employing)\s+(?:over |more than |about |around )?{_NUM}\+?\b", re.I),
+# A number is a headcount candidate only if it is NOT part of a range ("20-50", "20 to 50") and
+# NOT a fragment of a longer number. Ranges describe something vaguer than a headcount: unknown.
+_NUM = (r"(\d{1,3}(?:,\d{3})+|\d{1,6})(?![\d])(?!,\d)(?!\s*(?:[-–—/]|to\b|and\b|or\b)\s*\d)\+?")
+_APPROX = r"(?:about |around |over |roughly |approximately |nearly |more than |almost )?"
+_SIZE_NOUN = (r"(?:full[- ]time\s+)?(?:employees|team members|engineers|developers|designers|people|"
+              r"professionals|specialists|staff|experts|consultants)")
+_TEAM_NOUN = r"(?:team|company|studio|agency|crew|firm)"
+# Only SELF-REFERENTIAL wordings are accepted: the subject must be "we/our/the team/<company name>".
+SELF_SIZE_PATTERNS = [
+    re.compile(rf"\bwe(?:'|’)re (?:now |currently |only |just )?(?:an? )?(?:[\w-]+ ){{0,3}}?{_TEAM_NOUN} of {_APPROX}{_NUM}", re.I),
+    re.compile(rf"\bwe are (?:now |currently |only |just )?(?:an? )?(?:[\w-]+ ){{0,3}}?{_TEAM_NOUN} of {_APPROX}{_NUM}", re.I),
+    re.compile(rf"\b(?:our|the) (?:[\w-]+ ){{0,2}}?(?:team|company|studio|agency|firm|staff|crew) "
+               rf"(?:is|has|numbers|consists of|comprises|includes|currently has|now has) (?:made up of )?{_APPROX}{_NUM}"
+               rf"(?:\s+{_SIZE_NOUN})?", re.I),
+    re.compile(rf"\bwe(?: currently| now)? (?:have|employ|are) {_APPROX}{_NUM}\s+{_SIZE_NOUN}", re.I),
+    re.compile(rf"\bour {_NUM}\s+{_SIZE_NOUN}", re.I),
 ]
+HIST_RE = re.compile(
+    r"\b(?:started|began|begin|founded|launched|grew|grow|grown|growth|growing|was|were|had|used to|once|"
+    r"originally|initially|formerly|previously|back in|acquired|acquisition|merged|joined forces|"
+    r"from \d+|since (?:19|20)\d\d|in (?:19|20)\d\d|at the time|at one point)\b", re.I)
+THIRD_PARTY_WORDS_RE = re.compile(r"\b(?:clients?|customers?|your|their|they|partners?|vendors?|users?)\b", re.I)
+_LEGAL_WORDS = {"inc", "llc", "ltd", "co", "corp", "corporation", "company", "gmbh", "limited", "pllc",
+                "lp", "llp", "group"}
+
+
+def name_forms(company_key: str, company_name: str | None) -> list[str]:
+    """Names the company calls itself: its listed name and the first label of its domain."""
+    forms: set[str] = set()
+    if company_name:
+        toks = [t for t in re.findall(r"[A-Za-z0-9&'’]+", company_name) if t.lower() not in _LEGAL_WORDS]
+        if toks:
+            forms.add(" ".join(toks))
+    label = (company_key or "").split(".")[0].replace("-", " ").strip()
+    if len(label) >= 4:
+        forms.add(label)
+    return sorted(forms, key=len, reverse=True)
+
+
+def _named_size_patterns(forms: list[str]) -> list[re.Pattern]:
+    pats = []
+    for f in forms:
+        n = re.escape(f)
+        pats.append(re.compile(rf"\b{n}\s+(?:is|has) (?:now |currently )?(?:an? )?(?:[\w-]+ ){{0,3}}?{_TEAM_NOUN} of {_APPROX}{_NUM}", re.I))
+        pats.append(re.compile(rf"\b{n}\s+(?:has|employs|now has|currently has|currently employs) {_APPROX}{_NUM}\s+{_SIZE_NOUN}", re.I))
+    return pats
+
+
+def size_context_ok(text: str, m: re.Match) -> bool:
+    """Reject a size match whose clause is historical, about clients/others, or otherwise not
+    a present-tense statement by the company about its own headcount."""
+    lo, _ = sentence_bounds(text, m.start(), m.end())
+    cut = max([lo] + [lo + k.end() for k in re.finditer(r"[,;:–—]\s", text[lo:m.start()])])
+    before = text[cut:m.start()]
+    seg = text[cut:min(len(text), m.end() + 30)]
+    if HIST_RE.search(seg):
+        return False
+    return not THIRD_PARTY_WORDS_RE.search(before)
 
 
 @dataclass
@@ -193,18 +249,240 @@ def _state_value(raw: str) -> str:
     return STATE_NAMES.get(raw.lower(), raw.upper())
 
 
-def extract_evidence(company_key: str, snaps: list[PageSnapshot]) -> list[Evidence]:
+# ---- self-description / offering context ----------------------------------------------------------
+_VERB = (r"(?:design|build|develop|ship|deliver|create|engineer|craft|launch|implement|architect|"
+         r"maintain|modernis[ez]e|migrate)")
+OFFER_RE = re.compile(
+    rf"\b(?:we|our (?:team|studio|agency|engineers|developers|designers))\s+"
+    rf"(?:(?:also|primarily|mainly|mostly|proudly|can|will)\s+)?"
+    rf"(?:{_VERB}|specialis[ez]e?s? in|specializ\w* in|focus(?:es)? on|provide|offer|"
+    rf"help(?:s)?\b[^.!?]{{0,50}}?\b{_VERB})\b"
+    r"|\b(?:studio|agency|firm|shop|consultancy|company|team)\s+(?:that |which |who )?"
+    r"(?:specializ\w+|specialis\w+|build(?:s|ing)|design(?:s|ing)|develop(?:s|ing)|deliver(?:s|ing)|focus\w*)\b"
+    r"|\bour (?:services|expertise|capabilities)\b|\b(?:services|expertise|capabilities)\s+(?:include|includes|are)\b"
+    r"|\b(?:is|are) our (?:core|focus|specialty|specialism|speciality|craft)\b"
+    r"|\b(?:react|next\.?js|typescript|front-?end|web app\w*|custom software)\s+"
+    r"(?:development|engineering|consulting|services)\b", re.I)
+# Wording typical of a PRODUCT describing itself (features, supported languages, docs, integrations).
+PRODUCT_FEATURE_RE = re.compile(
+    r"\b(?:support(?:s|ed|ing)?|integrat\w+|compatible|sdks?|apis?|plugins?|extensions?|programming languages|"
+    r"languages|frameworks?|libraries|templates?|our (?:platform|product|app|tool|software|dashboard|portal)|"
+    r"the platform|lets you|allows you|enables you|features?|powered by|import|export)\b", re.I)
+SELF_PREFIX_RE = re.compile(
+    r"(?:\bwe(?:'|’)re|\bwe are|\bwe(?:'|’)ve become|\bis|\bare|\bas|\bour)\b(?:\s+[\w'’-]+){0,6}\s*$", re.I)
+ENTITY_BLOCKERS_RE = re.compile(
+    r"\b(?:integrat\w*|partner\w*|agencies|clients?|customers?|users?|members?|platform|product|tool|"
+    r"trusted by|used by|works? with|compatible|marketplace|directory|reviews?|vs\.?|than|hire|find|like|"
+    r"such as|including|alongside|for)\b", re.I)
+CLIENT_SERVICES_RE = re.compile(
+    r"\bwe\s+(?:(?:also|primarily|mainly|mostly)\s+)?(?:design|build|develop|ship|deliver|create|engineer|craft)\b"
+    r"[^.!?]{0,100}?\bfor\s+(?:our\s+|their\s+)?(?:clients?\b|(?:[\w-]+[ -]){0,2}?"
+    r"(?:startups?|founders|scale-?ups|businesses|brands|companies|enterprises|organi[sz]ations)\b)"
+    r"|\bour clients\s+(?:include|are|range)\b", re.I)
+
+# Signals that the site belongs to a PRODUCT vendor / large corporation rather than a services studio.
+VENDOR_SIGNALS: dict[str, tuple[re.Pattern, int]] = {
+    "free_trial": (re.compile(r"\bfree trial\b|\b(?:start|get|try)\b[^.]{0,15}\bfor free\b|\bget started (?:for )?free\b|"
+                              r"\bfree forever\b|\b(?:start|try) free\b", re.I), 90),
+    "request_demo": (re.compile(r"\b(?:request|book|schedule|watch|get) (?:a |an |the |your )?(?:live |product |free )?demo\b", re.I), 90),
+    "account_signup": (re.compile(r"\b(?:sign[- ]?up|sign[- ]?in|log[- ]?in|create (?:a |an |your )?(?:free )?account)\b", re.I), 60),
+    "pricing_plans": (re.compile(r"^(?:pricing|plans|plans (?:and|&) pricing|pricing (?:and|&) plans|see pricing|view pricing)$", re.I), 40),
+    "docs_integrations": (re.compile(r"^(?:integrations?|api(?: docs| documentation| reference)?|documentation|"
+                                     r"developers?|developer docs|docs|changelog|status|trust center)$", re.I), 40),
+    "our_platform": (re.compile(r"\b(?:our|the)\s+(?:[\w-]+\s+){0,2}platform\b|\ball-in-one platform\b|"
+                                r"\b(?:[\w-]+\s+){1,2}platform that\b", re.I), 400),
+    "customers_at_scale": (re.compile(r"\b(?:trusted|used|loved) by\b[^.]{0,40}\b(?:teams|companies|developers|customers|users)\b|"
+                                      r"\b[\d,]+\+? (?:customers|users|teams|developers|companies) "
+                                      r"(?:worldwide|around the world|trust|use)\b|"
+                                      r"\b(?:millions?|thousands?) of (?:customers|users|developers|teams)\b", re.I), 400),
+}
+ENTERPRISE_SIGNALS: dict[str, tuple[re.Pattern, int]] = {
+    "listed_company": (re.compile(r"\b(?:NASDAQ|NYSE):|\bpublicly[- ]traded\b|\bstock (?:symbol|ticker)\b", re.I), 400),
+    "global_scale": (re.compile(r"\b(?:offices|presence|employees|customers) in \d+ countries\b|"
+                                r"\b(?:global|worldwide) (?:leader|provider|enterprise|technology company)\b", re.I), 400),
+    "enterprise_positioning": (re.compile(r"\benterprise[- ](?:grade|class|software|platform|customers)\b|\bSOC ?2\b|"
+                                          r"\bSAML\b|\bsingle sign-on\b|\bFedRAMP\b", re.I), 400),
+}
+
+
+def _items(snap: PageSnapshot):
+    """(text, block_index, page_kind, ctx_labels, third_party) for every text the page offers."""
+    kind = page_kind(snap.url, snap.is_homepage)
+    page = snap.page
+    for i, text in enumerate(page.blocks):
+        yield text, i, kind, page.ctx_at(i), block_is_third_party(page, i)
+    for t in (page.title, page.meta_description):
+        if t:
+            yield t, -1, kind, frozenset(), False
+
+
+def _signal_items(snap: PageSnapshot):
+    """Items plus each short link label: nav/CTA labels are often inline anchors that share one
+    block, and a link label is always a verbatim substring of its block."""
+    yield from _items(snap)
+    kind = page_kind(snap.url, snap.is_homepage)
+    for _href, label in snap.page.links:
+        if label and len(label) <= 90:
+            yield label, -1, kind, frozenset(), False
+
+
+def entity_self_referential(text: str, m: re.Match) -> bool:
+    """The studio/agency noun phrase describes the company itself ("X is a software studio",
+    "We're a product studio"), not a client, partner, integration or directory listing."""
+    lo, _ = sentence_bounds(text, m.start(), m.end())
+    clause = text[lo:m.start()]
+    if ENTITY_BLOCKERS_RE.search(clause):
+        return False
+    return len(clause.split()) <= 3 or bool(SELF_PREFIX_RE.search(clause))
+
+
+def _offering(text: str, m: re.Match, kind: str, ctx, third_party: bool) -> bool:
+    """True when the technology match sits in wording where the company offers it to clients."""
+    if third_party or (ctx & UNRELIABLE_CTX) or kind in NON_OFFERING_KINDS:
+        return False
+    lo, hi = sentence_bounds(text, m.start(), m.end())
+    sent = text[lo:hi]
+    offer = OFFER_RE.search(sent) is not None
+    if PRODUCT_FEATURE_RE.search(sent) and not offer:
+        return False
+    if offer:
+        return True
+    if kind == "services" and len(text) <= 220:
+        return True  # a short services-page list item is the company listing its own services
+    return any(entity_self_referential(sent, e) for e in ENTITY_RE.finditer(sent))
+
+
+def _ev_from(company_key, claim_type, value, snap, text, m, notes="") -> Evidence:
+    return _ev(company_key, claim_type, value, snap, text, m, notes)
+
+
+def _service_evidence(company_key: str, snaps: list[PageSnapshot], tag: str, pats: list[re.Pattern]):
+    """Returns (offering_evidence | None, mention_evidence | None). A mention is a technology
+    keyword WITHOUT offering context (feature lists, docs, testimonials, client work, ...): it is
+    recorded for transparency but earns nothing."""
+    mention = None
+    for snap in snaps:
+        for text, _i, kind, ctx, tp in _items(snap):
+            for pat in pats:
+                m = pat.search(text)
+                if not m:
+                    continue
+                if _offering(text, m, kind, ctx, tp):
+                    return _ev(company_key, f"service:{tag}", tag, snap, text, m,
+                               "company describes offering this to clients"), None
+                if mention is None:
+                    mention = _ev(company_key, f"mention:{tag}", tag, snap, text, m,
+                                  "keyword present WITHOUT evidence the company offers it as a client service "
+                                  "(feature/docs/testimonial/client-work/generic wording); weight 0")
+    return None, mention
+
+
+def _identity_evidence(company_key: str, snaps: list[PageSnapshot]) -> list[Evidence]:
+    out: list[Evidence] = []
+    for snap in snaps:
+        for text, _i, kind, ctx, tp in _items(snap):
+            if tp or (ctx & UNRELIABLE_CTX) or kind in NON_SELF_KINDS:
+                continue
+            for m in ENTITY_RE.finditer(text):
+                if entity_self_referential(text, m):
+                    out.append(_ev(company_key, "entity_type:studio_or_agency", "studio_or_agency", snap, text, m,
+                                   "self-referential studio/agency wording"))
+                    return out
+    for snap in snaps:
+        for text, _i, kind, ctx, tp in _items(snap):
+            if tp or (ctx & UNRELIABLE_CTX) or kind in NON_SELF_KINDS:
+                continue
+            m = CLIENT_SERVICES_RE.search(text)
+            if m:
+                out.append(_ev(company_key, "entity_type:client_services", "client_services", snap, text, m,
+                               "company says it builds for clients (no studio/agency noun found)"))
+                return out
+    return out
+
+
+def _signal_evidence(company_key: str, snaps: list[PageSnapshot], claim: str,
+                     table: dict[str, tuple[re.Pattern, int]], note: str) -> list[Evidence]:
+    out: list[Evidence] = []
+    for cat, (pat, maxlen) in table.items():
+        done = False
+        for snap in snaps:
+            for text, _i, kind, ctx, tp in _signal_items(snap):
+                if tp or kind in ("editorial", "docs") or len(text) > maxlen:
+                    continue
+                m = pat.search(text)
+                if m:
+                    out.append(_ev(company_key, claim, cat, snap, text, m, note))
+                    done = True
+                    break
+            if done:
+                break
+    return out
+
+
+CLIENT_WORK_RE = re.compile(
+    r"\b(?:selected work|our work|client work|our portfolio|portfolio|our clients|case stud(?:y|ies)|"
+    r"we(?:'|’)ve (?:built|delivered|shipped)|we have (?:built|delivered|shipped))\b", re.I)
+
+
+def _client_work_evidence(company_key: str, snaps: list[PageSnapshot]):
+    """Client-work wording that is more than a bare nav/footer label such as 'Case studies'."""
+    for snap in snaps:
+        for text, _i, kind, ctx, tp in _items(snap):
+            if tp or (ctx & UNRELIABLE_CTX):
+                continue
+            m = CLIENT_WORK_RE.search(text)
+            if m and (len(text.split()) >= 5 or kind == "work"):
+                return _ev(company_key, "signal:client_work", "client_work", snap, text, m,
+                           "client work is NOT evidence of purchase intent")
+    return None
+
+
+def _size_evidence(company_key: str, snaps: list[PageSnapshot], company_name: str | None):
+    pats = SELF_SIZE_PATTERNS + _named_size_patterns(name_forms(company_key, company_name))
+    sizes: dict[int, tuple[PageSnapshot, str, re.Match]] = {}
+    for snap in snaps:
+        for text, _i, kind, ctx, tp in _items(snap):
+            if tp or (ctx & THIRD_PARTY_CTX) or kind in NON_SELF_KINDS:
+                continue
+            for pat in pats:
+                for m in pat.finditer(text):
+                    if not size_context_ok(text, m):
+                        continue
+                    n = int(m.group(1).replace(",", ""))
+                    if 1 <= n <= 100_000 and n not in sizes:
+                        sizes[n] = (snap, text, m)
+    if len(sizes) == 1:
+        n, (snap, text, m) = next(iter(sizes.items()))
+        return _ev(company_key, "size:employees", n, snap, text, m,
+                   "self-referential present-tense headcount wording; page statements can be stale")
+    if len(sizes) > 1:
+        n, (snap, text, m) = next(iter(sizes.items()))
+        ev = _ev(company_key, "size:employees", None, snap, text, m,
+                 f"conflicting explicit counts found: {sorted(sizes)}; treated as unknown")
+        ev.level = UNKNOWN
+        return ev
+    return None
+
+
+def extract_evidence(company_key: str, snaps: list[PageSnapshot],
+                     company_name: str | None = None) -> list[Evidence]:
     out: list[Evidence] = []
 
-    # services (one evidence item per tag; first occurrence, homepage first)
-    for tag, pats in SERVICE_PATTERNS.items():
-        hit = _find(snaps, pats)
-        if hit:
-            out.append(_ev(company_key, f"service:{tag}", tag, *hit))
+    # company identity / type signals first so they can never be truncated away
+    out += _identity_evidence(company_key, snaps)
+    out += _signal_evidence(company_key, snaps, "company_type:saas_vendor_signal", VENDOR_SIGNALS,
+                            "product-vendor wording (trial/demo/account/platform/docs); weight 0 alone")
+    out += _signal_evidence(company_key, snaps, "company_type:enterprise_signal", ENTERPRISE_SIGNALS,
+                            "large/listed-corporation wording; weight 0 alone")
 
-    hit = _find(snaps, [ENTITY_RE])
-    if hit:
-        out.append(_ev(company_key, "entity_type:studio_or_agency", "studio_or_agency", *hit))
+    # services: only wording where the company offers the service to clients (see _offering)
+    mentions: list[Evidence] = []
+    for tag, pats in SERVICE_PATTERNS.items():
+        offered, mention = _service_evidence(company_key, snaps, tag, pats)
+        if offered:
+            out.append(offered)
+        elif mention:
+            mentions.append(mention)
 
     # location
     hit = _find(snaps, [US_ADDRESS_RE])
@@ -237,25 +515,10 @@ def extract_evidence(company_key: str, snaps: list[PageSnapshot]) -> list[Eviden
         out.append(_ev(company_key, "location:non_us", value, snap, text, m,
                        "non-US place/postcode statement (detection is partial)"))
 
-    # explicit team size; conflicting counts => unknown, never a guess
-    sizes: dict[int, tuple[PageSnapshot, str, re.Match]] = {}
-    for snap in snaps:
-        for text in _texts(snap):
-            for pat in SIZE_PATTERNS:
-                for m in pat.finditer(text):
-                    n = int(m.group(1).replace(",", ""))
-                    if 1 <= n <= 100_000 and n not in sizes:
-                        sizes[n] = (snap, text, m)
-    if len(sizes) == 1:
-        n, (snap, text, m) = next(iter(sizes.items()))
-        out.append(_ev(company_key, "size:employees", n, snap, text, m,
-                       "explicit count wording on first-party page; page statements can be stale"))
-    elif len(sizes) > 1:
-        n, (snap, text, m) = next(iter(sizes.items()))
-        ev = _ev(company_key, "size:employees", None, snap, text, m,
-                 f"conflicting explicit counts found: {sorted(sizes)}; treated as unknown")
-        ev.level = UNKNOWN
-        out.append(ev)
+    # explicit, self-referential team size; ranges/history/third-party/conflicts => unknown
+    size_ev = _size_evidence(company_key, snaps, company_name)
+    if size_ev:
+        out.append(size_ev)
 
     # negatives / signals
     home_snaps = [s for s in snaps if s.is_homepage]
@@ -271,14 +534,16 @@ def extract_evidence(company_key: str, snaps: list[PageSnapshot]) -> list[Eviden
                            notes="staffing/recruiting wording on a secondary page; needs review"))
     for ctype, pat, val in (("negative:staff_augmentation", STAFF_AUG_RE, "staff_augmentation"),
                             ("negative:global_consultancy", GLOBAL_CONSULTANCY_RE, "global_consultancy"),
-                            ("signal:client_work", PORTFOLIO_RE, "client_work"),
                             ("signal:hiring_info_only", HIRING_RE, "hiring")):
         hit = _find(snaps, [pat])
         if hit:
-            note = {"signal:client_work": "client work is NOT evidence of purchase intent",
-                    "signal:hiring_info_only": "recorded for information; weight 0; hiring is NOT purchase intent",
+            note = {"signal:hiring_info_only": "recorded for information; weight 0; hiring is NOT purchase intent",
                     }.get(ctype, "")
             out.append(_ev(company_key, ctype, val, *hit, notes=note))
+    cw = _client_work_evidence(company_key, snaps)
+    if cw:
+        out.append(cw)
+    out += mentions
     return out[:MAX_EVIDENCE_PER_COMPANY]
 
 

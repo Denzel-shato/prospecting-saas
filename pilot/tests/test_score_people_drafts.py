@@ -37,7 +37,7 @@ class ExclusionTests(unittest.TestCase):
     def test_oversized_excluded_and_above_band_penalised(self):
         _, _, r = score("<p>Our 400 employees build software in Austin, TX 78701.</p>")
         self.assertIn("size_over_250", rules(r))
-        _, _, r = score("<p>Software studio, Austin, TX 78701. A team of 80.</p>")
+        _, _, r = score("<p>Software studio, Austin, TX 78701. We are a team of 80.</p>")
         self.assertFalse(r.hard_exclusions)
         self.assertTrue(any(c["points"] == -10 for c in r.components))
 
@@ -52,7 +52,7 @@ class ExclusionTests(unittest.TestCase):
         self.assertFalse(r.hard_exclusions)
 
     def test_unknown_evidence_earns_nothing_and_unknowns_listed(self):
-        evs, _, r = score("<p>A team of 8 and also 35 employees. Coming soon.</p>")
+        evs, _, r = score("<p>We are a team of 8. We have 35 employees. Coming soon.</p>")
         self.assertFalse([c for c in r.components if c["rule"].startswith("size")])
         self.assertTrue(any(x.startswith("size") for x in r.unknowns))
         self.assertTrue(any(x.startswith("location") for x in r.unknowns))
@@ -73,13 +73,14 @@ class ExclusionTests(unittest.TestCase):
 
 class PeopleTests(unittest.TestCase):
     def test_named_leader_found_with_source(self):
-        s = u.snap("<div><h3>Maya Okafor</h3><p>Founder &amp; CEO</p></div>")
+        s = u.team_snap("<div><h3>Maya Okafor</h3><p>Founder &amp; CEO</p></div>")
         d = find_decision_makers([s])
         self.assertEqual((d[0].name, d[0].role_class, d[0].source_url), ("Maya Okafor", "founder_ceo", s.url))
+        self.assertEqual(d[0].basis, "team_page")
 
     def test_inline_and_reverse_forms(self):
-        self.assertEqual(find_decision_makers([u.snap("<p>Daniel Reyes, CTO</p>")])[0].name, "Daniel Reyes")
-        self.assertEqual(find_decision_makers([u.snap("<p>CEO: Ana Silva</p>")])[0].name, "Ana Silva")
+        self.assertEqual(find_decision_makers([u.team_snap("<p>Daniel Reyes, CTO</p>")])[0].name, "Daniel Reyes")
+        self.assertEqual(find_decision_makers([u.team_snap("<p>CEO: Ana Silva</p>")])[0].name, "Ana Silva")
 
     def test_decoys_and_non_leaders_ignored(self):
         body = ("<h1>Meet Our Team</h1><h2>Our Leadership</h2><p>Founder</p><h2>Founder Story</h2>"
@@ -88,12 +89,12 @@ class PeopleTests(unittest.TestCase):
 
     def test_unknown_when_nobody_named_and_no_email_fields(self):
         self.assertEqual(find_decision_makers([u.snap("<p>Our founder started this in 2015.</p>")]), [])
-        for d in find_decision_makers([u.snap("<p>Daniel Reyes, CTO</p>")]):
+        for d in find_decision_makers([u.team_snap("<p>Daniel Reyes, CTO</p>")]):
             self.assertFalse(hasattr(d, "email"))
 
     def test_ordering_prefers_founder_ceo(self):
         body = "<p>Daniel Reyes, CTO</p><p>Maya Okafor, Founder</p>"
-        self.assertEqual(find_decision_makers([u.snap(body)])[0].name, "Maya Okafor")
+        self.assertEqual(find_decision_makers([u.team_snap(body)])[0].name, "Maya Okafor")
 
     def test_mailto_links_are_never_collected(self):
         s = u.snap('<a href="mailto:boss@x.example">Maya Okafor, CEO</a><a href="/team">Team</a>')
@@ -101,15 +102,15 @@ class PeopleTests(unittest.TestCase):
 
 
 class DraftTests(unittest.TestCase):
-    BODY = "<p>Software studio building React and Next.js web applications in Austin, TX 78701.</p>" \
-           "<p>Maya Okafor, Founder</p>"
+    BODY = "<p>Software studio building React and Next.js web applications in Austin, TX 78701.</p>"
 
-    def make(self, body=None, verified=True):
+    def make(self, body=None, verified=True, people=True):
         s = u.snap(body or self.BODY)
+        team = u.team_snap("<p>Maya Okafor, Founder</p>")
         evs = extract_evidence(K, [s])
         ids = {e.id for e in evs} if verified else set()
         return evs, build_draft(domain=K, company_name="Acme", evidence=evs, verified_ids=ids,
-                                decision_makers=find_decision_makers([s]))
+                                decision_makers=find_decision_makers([s, team] if people else [s]))
 
     def test_draft_is_unsent_with_no_email_and_passes_lint(self):
         _, d = self.make()
@@ -140,7 +141,7 @@ class DraftTests(unittest.TestCase):
         self.assertIsNone(self.make("<p>Coming soon.</p>")[1])
 
     def test_no_named_contact_falls_back_to_team_greeting(self):
-        _, d = self.make("<p>Software studio building React apps. Austin, TX 78701.</p>")
+        _, d = self.make("<p>Software studio building React apps. Austin, TX 78701.</p>", people=False)
         self.assertIsNone(d.recipient["name"])
         self.assertIn("Acme team", d.body)
 

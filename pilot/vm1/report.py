@@ -151,6 +151,8 @@ def render_report(run: dict, m: dict) -> str:
     for s in man["discovery_status"]:
         extra = f" — **{s['reason']}**" if s.get("reason") else ""
         L.append(f"- `{s['adapter']}` ({s['cost_class']}): **{s['status']}**, {s['count']} candidates{extra}")
+        if s.get("note"):
+            L.append(f"  - query note: {s['note']}")
         if s.get("terms_note"):
             L.append(f"  - terms noted: {s['terms_note']} (verify before relying on it; license: {s.get('license') or 'n/a'})")
     if not man["discovery_status"]:
@@ -162,7 +164,15 @@ def render_report(run: dict, m: dict) -> str:
              f"(rejected: {c['rejected']}; duplicate domains removed: {m['duplicates_removed']})")
     L.append(f"- evaluated: {c['selected']} = automated {c['selected_automated']} + manual "
              f"{c['selected_manual']} + synthetic {c['selected_synthetic']}")
-    L.append(f"- selection: deterministic hash order, seed `{man['seed']}`, cap {man['max_candidates']}")
+    L.append(f"- selection: {man.get('selection_method', 'deterministic hash order')}; seed `{man['seed']}`, "
+             f"cap {man['max_candidates']}")
+    cov = man.get("discovery_coverage")
+    if cov and cov.get("pool"):
+        L.append(f"- discovery-record coverage of the pool ({cov['pool']}): description present "
+                 f"{cov['with_record_description']}, agency-like description {cov['agency_like_description']}, "
+                 f"vendor-like description {cov['vendor_like_description']}, listed on an exchange "
+                 f"{cov['listed_on_exchange']}. A low agency-like count means this source cannot supply "
+                 f"{man['max_candidates']} relevant agencies.")
     L.append("")
     L.append("## Metrics (denominators shown; reference benchmarks are NOT adopted gates)")
     a = m["attempted"]
@@ -194,14 +204,15 @@ def render_report(run: dict, m: dict) -> str:
     if not ranked:
         L.append("_No eligible ranked companies._")
     else:
-        L.append("| # | Domain | Score | Tier | Why (rule points) | Decision-maker (first-party site) | Discovery |")
-        L.append("|---|---|---|---|---|---|---|")
+        L.append("| # | Domain | Score | Tier | Company type | Why (rule points) | Decision-maker (first-party site) | Discovery |")
+        L.append("|---|---|---|---|---|---|---|---|")
         for i, x in enumerate(ranked, 1):
             dm = x["decision_makers"][0] if x["decision_makers"] else None
             dm_s = f"{dm['name']}, {dm['title']}" if dm else "unknown"
             why = "; ".join(f"{p['points']:+d} {p['rule']}" for p in x["score"]["components"])
             why = why if len(why) <= 400 else why[:397] + "..."
-            L.append(f"| {i} | {x['domain']} | {x['total']} | {x['tier']} | {why} | {dm_s} | {x['discovery']['method']} |")
+            L.append(f"| {i} | {x['domain']} | {x['total']} | {x['tier']} | {x.get('company_type', 'n/a')} | "
+                     f"{why} | {dm_s} | {x['discovery']['method']} |")
     L.append("")
     L.append("## Excluded / ineligible")
     for x in comps:

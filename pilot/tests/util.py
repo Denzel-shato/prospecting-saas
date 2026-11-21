@@ -23,3 +23,8 @@ def snap(body_html: str, url: str = "https://x.example/", home: bool = True) -> 
 
 def resolver(mapping: dict[str, list[str]]):
     return lambda host: mapping.get(host, [])
+
+
+def team_snap(body_html: str, url: str = "https://x.example/team") -> PageSnapshot:
+    """A page whose URL says it is the company's team/leadership page (not the homepage)."""
+    return snap(body_html, url, home=False)

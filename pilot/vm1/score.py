@@ -4,12 +4,27 @@ Every point is traceable to evidence ids. Missing information earns no points an
 under ``unknowns``; it is never invented. Thresholds are ARBITRARY starting points that must be
 calibrated against human labels; they are not validated.
 
+QUALIFICATION GATE (applies before any tier above "weak" is possible):
+  company_type is derived from evidence only:
+    agency_studio        self-referential studio/agency (or "we build ... for clients") identity AND
+                         >=1 service the company OFFERS to clients (not a tech keyword, feature list,
+                         docs page, testimonial or client case study) AND no vendor/enterprise profile
+    saas_vendor          >=3 distinct product-vendor signals (trial/demo/account/pricing/docs/platform/
+                         customers-at-scale) and no agency identity           -> excluded
+    enterprise_software  listed-company wording, or >=2 large-corporation signals, no agency identity
+                                                                              -> excluded
+    staffing             homepage staffing/recruiting self-description        -> excluded
+    unclear              anything else (including mixed agency+vendor wording) -> capped at weak,
+                         flagged for manual review. Unknown is never positive evidence.
+  Only agency_studio can reach "possible". "strong" additionally needs US evidence, an explicit
+  in-band headcount and >=2 distinct offered target services; otherwise it is held at "possible".
+
 Positive rules (max 90 + 5):
-  +20 entity_type: studio/agency/software-dev-company wording        (source_supported+)
+  +20 entity_type: studio/agency wording (+12 if only "we build ... for clients" wording)   (source_supported+)
   +6 react, +6 nextjs, +4 typescript, +5 frontend, +5 web_app, +4 custom_software   (cap 25)
   +20 US location (first-party statement and/or dataset record)
   +15 explicit size within ICP band (5-50);  0 if 1-4 or unknown
-  + 5 client-work wording (NOT purchase intent)
+  + 5 client-work wording (NOT purchase intent; agency_studio only)
   + 5 publicly named decision-maker in a target role (first-party site)
 Negative rules:
   -10 explicit size 51-250 (above band)
@@ -47,6 +62,9 @@ class ScoreResult:
     hard_exclusions: list[dict] = field(default_factory=list)
     unknowns: list[str] = field(default_factory=list)
     flags: list[str] = field(default_factory=list)
+    company_type: str = "unclear"
+    type_evidence_ids: list[str] = field(default_factory=list)
+    gate_notes: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -64,6 +82,44 @@ def _ok(evidence: list[Evidence], claim: str) -> list[Evidence]:
 
 def _ids(evs: list[Evidence]) -> list[str]:
     return [e.id for e in evs]
+
+
+TARGET_SERVICE_TAGS = ("react", "nextjs", "typescript", "frontend", "web_app")
+VENDOR_MIN_SIGNALS = 3
+ENTERPRISE_MIN_SIGNALS = 2
+ENTITY_POINTS = 20
+CLIENT_SERVICES_POINTS = 12
+
+
+def classify_company(evidence: list[Evidence]) -> tuple[str, list[Evidence], list[str]]:
+    """Company type from evidence alone. Returns (type, evidence used, human-readable reasons)."""
+    staffing = _ok(evidence, "negative:staffing_recruiting")
+    ident = _ok(evidence, "entity_type:studio_or_agency") or _ok(evidence, "entity_type:client_services")
+    services = [e for tag in TARGET_SERVICE_TAGS + ("custom_software",) for e in _ok(evidence, f"service:{tag}")]
+    vendor = _ok(evidence, "company_type:saas_vendor_signal")
+    ent = _ok(evidence, "company_type:enterprise_signal")
+    vendor_cats = {e.value for e in vendor}
+    ent_cats = {e.value for e in ent}
+    big = "listed_company" in ent_cats or len(ent_cats) >= ENTERPRISE_MIN_SIGNALS
+    vendorish = len(vendor_cats) >= VENDOR_MIN_SIGNALS
+    if staffing:
+        return "staffing", staffing, ["homepage describes a staffing/recruiting business"]
+    if big and not ident:
+        return "enterprise_software", ent, [f"large/listed-corporation signals {sorted(ent_cats)} and no studio/agency self-description"]
+    if vendorish and not ident:
+        return "saas_vendor", vendor, [f"product-vendor signals {sorted(vendor_cats)} and no studio/agency self-description"]
+    if ident and services and not vendorish and not big:
+        return "agency_studio", ident + services, ["self-described service provider offering target services to clients"]
+    reasons = []
+    if not ident:
+        reasons.append("no self-referential studio/agency (or build-for-clients) wording")
+    if not services:
+        reasons.append("no target service described as offered to clients")
+    if ident and (vendorish or big):
+        reasons.append(f"mixed identity: agency wording alongside vendor/enterprise signals {sorted(vendor_cats | ent_cats)}")
+    if len(vendor_cats) in (1, 2) and not ident:
+        reasons.append(f"some product-vendor signals {sorted(vendor_cats)}")
+    return "unclear", ident + services + vendor + ent, reasons
 
 
 def score_company(
@@ -107,6 +163,12 @@ def score_company(
     elif non_us and us:
         res.flags.append("conflict: both US and non-US location evidence; review manually")
 
+    ctype, type_evs, type_reasons = classify_company(evidence)
+    res.company_type = ctype
+    res.type_evidence_ids = _ids(type_evs)
+    if ctype in ("saas_vendor", "enterprise_software"):
+        exclude(ctype, type_evs, "; ".join(type_reasons))
+
     if res.hard_exclusions:
         return res
 
@@ -114,10 +176,13 @@ def score_company(
         res.components.append({"rule": rule, "points": pts, "evidence_ids": _ids(evs), "note": note})
 
     ent = _ok(evidence, "entity_type:studio_or_agency")
+    cs = _ok(evidence, "entity_type:client_services")
     if ent:
-        add("entity_type: studio/agency wording", 20, ent)
+        add("entity_type: studio/agency wording", ENTITY_POINTS, ent)
+    elif cs:
+        add("entity_type: builds-for-clients wording (no studio/agency noun)", CLIENT_SERVICES_POINTS, cs)
     else:
-        res.unknowns.append("entity_type: no studio/agency self-description found")
+        res.unknowns.append("entity_type: no self-referential studio/agency description found")
 
     svc_total, svc_evs = 0, []
     for tag, pts in SERVICE_POINTS.items():
@@ -147,7 +212,7 @@ def score_company(
     else:
         res.unknowns.append("size: no single explicit headcount (not guessed)")
 
-    if _ok(evidence, "signal:client_work"):
+    if _ok(evidence, "signal:client_work") and ctype == "agency_studio":
         add("signal: client-work wording (not purchase intent)", 5, _ok(evidence, "signal:client_work"))
     if decision_makers:
         add("decision-maker named on first-party site", 5, [])
@@ -163,4 +228,30 @@ def score_company(
 
     res.total = max(0, min(100, sum(c["points"] for c in res.components)))
     res.tier = "strong" if res.total >= TIER_STRONG else "possible" if res.total >= TIER_POSSIBLE else "weak"
+
+    # ---- qualification gate: business-type fit comes before any secondary signal ---------------
+    if ctype != "agency_studio":
+        res.gate_notes += type_reasons
+        res.flags.append(f"manual_review: company type '{ctype}' not established as a client-services "
+                         f"agency/studio; capped at weak ({'; '.join(type_reasons)})")
+        cap = TIER_POSSIBLE - 1
+        if res.total > cap:
+            add(f"qualification gate: type '{ctype}' unverified, capped at {cap}", cap - res.total,
+                type_evs, "US location, technology mentions, size and named people cannot promote an "
+                          "unverified agency identity")
+            res.total = cap
+        res.tier = "weak"
+    elif res.tier == "strong":
+        offered_tags = {t for t in TARGET_SERVICE_TAGS if _ok(evidence, f"service:{t}")}
+        missing = []
+        if not us:
+            missing.append("US presence not evidenced")
+        if not (isinstance(size, int) and lo <= size <= hi):
+            missing.append("no explicit in-band headcount")
+        if len(offered_tags) < 2:
+            missing.append("fewer than 2 offered target services")
+        if missing:
+            res.tier = "possible"
+            res.gate_notes.append("held at possible: " + "; ".join(missing))
+            res.flags.append("strong_gate: score >= strong threshold but " + "; ".join(missing))
     return res

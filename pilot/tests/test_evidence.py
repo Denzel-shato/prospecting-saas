@@ -37,7 +37,7 @@ class EvidenceTests(unittest.TestCase):
         self.assertEqual(extract_evidence(K, [u.snap("<p>Coming soon.</p>")]), [])
 
     def test_conflicting_sizes_become_unknown_not_guessed(self):
-        s = u.snap("<p>We started as a team of 8.</p><p>Today we have 35 employees.</p>")
+        s = u.snap("<p>We are a team of 8.</p><p>We have 35 employees.</p>")
         size = [e for e in extract_evidence(K, [s]) if e.claim_type == "size:employees"]
         self.assertEqual(len(size), 1)
         self.assertEqual((size[0].level, size[0].value), (UNKNOWN, None))

@@ -21,6 +21,7 @@ from .evidence import (PageSnapshot, apply_discovery_record, extract_evidence, v
                        verify_excerpt_parts)
 from .fetch import PoliteFetcher
 from .guard import SpendLedger, credentials_present
+from .prequalify import coverage, order_pool
 from .htmlparse import PageData, parse_html
 from .people import find_decision_makers
 from .score import EXCLUDED, NOT_RESEARCHABLE, score_company
@@ -102,10 +103,18 @@ def dedup(candidates: list[Candidate]) -> tuple[list[Candidate], list[dict], lis
     return list(kept.values()), rejected, possible_same
 
 
+def select_with_reasons(pool: list[Candidate], max_candidates: int, seed: str) -> tuple[list[Candidate], dict]:
+    """Deterministic selection. Candidates are ordered by (record-based prequalification priority,
+    seeded hash). With no usable record fields every priority is 0 and the order is the original
+    seeded-hash order. Nothing is dropped for being low priority unless the cap is reached."""
+    rows = order_pool(pool, seed)
+    chosen = rows if len(pool) <= max_candidates else rows[:max_candidates]
+    info = {c.domain: {"priority": pri, "reasons": why} for c, pri, why in chosen if pri or why}
+    return [c for c, _, _ in chosen], info
+
+
 def select(pool: list[Candidate], max_candidates: int, seed: str) -> list[Candidate]:
-    if len(pool) <= max_candidates:
-        return list(pool)
-    return sorted(pool, key=lambda c: hashlib.sha256(f"{seed}|{c.domain}".encode()).hexdigest())[:max_candidates]
+    return select_with_reasons(pool, max_candidates, seed)[0]
 
 
 def research_company(cand: Candidate, fetcher: PoliteFetcher, icp: dict, max_secondary: int) -> dict:
@@ -140,7 +149,7 @@ def research_company(cand: Candidate, fetcher: PoliteFetcher, icp: dict, max_sec
                 snaps.append(PageSnapshot(url=surl, fetched_at=sres.fetched_at, page=spage))
                 pages_by_url[surl] = spage
 
-    evidence = extract_evidence(key, snaps)
+    evidence = extract_evidence(key, snaps, company_name=cand.name)
     evidence = apply_discovery_record(key, cand, evidence)
     verified, dropped = [], 0
     for ev in evidence:
@@ -150,7 +159,7 @@ def research_company(cand: Candidate, fetcher: PoliteFetcher, icp: dict, max_sec
             dropped += 1
     verified_ids = {e.id for e in verified}
 
-    dms = [d for d in find_decision_makers(snaps)
+    dms = [d for d in find_decision_makers(snaps, company_key=key, company_name=cand.name)
            if verify_excerpt_parts(d.excerpt_parts, pages_by_url.get(d.source_url))]
 
     # Only a real robots/crawl-delay refusal is "not researchable". A robots.txt that could not be
@@ -166,7 +175,7 @@ def research_company(cand: Candidate, fetcher: PoliteFetcher, icp: dict, max_sec
     rec.update({"evidence": [e.to_dict() for e in verified], "dropped_unverifiable_evidence": dropped,
                 "verified_evidence_ids": sorted(verified_ids),
                 "decision_makers": [d.to_dict() for d in dms], "score": score.to_dict(),
-                "tier": score.tier, "total": score.total})
+                "tier": score.tier, "total": score.total, "company_type": score.company_type})
     return rec
 
 
@@ -195,6 +204,8 @@ def run_pipeline(cfg: RunConfig, adapters: list[Adapter], fetcher: PoliteFetcher
         try:
             got = ad.discover()
             st.update(status="ok", count=len(got))
+            if getattr(ad, "run_note", ""):
+                st["note"] = ad.run_note
             discovered.extend(got)
         except DiscoveryBlocked as exc:
             st.update(status="blocked", count=0, reason=str(exc))
@@ -204,7 +215,7 @@ def run_pipeline(cfg: RunConfig, adapters: list[Adapter], fetcher: PoliteFetcher
 
     # 2. canonicalize / dedup / select
     pool, rejected, possible_same = dedup(discovered)
-    selected = select(pool, cfg.max_candidates, cfg.seed)
+    selected, selection_info = select_with_reasons(pool, cfg.max_candidates, cfg.seed)
 
     # 3. research
     t = time.monotonic()
@@ -247,6 +258,9 @@ def run_pipeline(cfg: RunConfig, adapters: list[Adapter], fetcher: PoliteFetcher
         "http_requests_logged": len(fetcher.log), "paid_api_spend_usd": ledger.total_usd,
         "spend_ledger_entries": len(ledger.entries),
         "credentials_detected_in_env_but_ignored": credentials_present(),
+        "selection_method": "prequalify priority (record description/listing/headcount) then seeded hash",
+        "selection_priorities": selection_info,
+        "discovery_coverage": coverage(pool),
         "possible_same_company_different_domain": possible_same,
         "sending": "none: this prototype contains no email/Gmail/SMTP code path",
     }

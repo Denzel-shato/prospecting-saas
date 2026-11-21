@@ -143,14 +143,29 @@ class WikidataAdapter(Adapter):
             raise DiscoveryBlocked(
                 f"wikidata ID check failed: {self.COUNTRY_US} label={labels.get(self.COUNTRY_US)!r}")
 
-    def build_query(self) -> str:
-        return f"""SELECT ?item ?itemLabel ?website ?employees WHERE {{
+    def build_query(self, enriched: bool = True) -> str:
+        if not enriched:
+            # Original (live-proven in run 20261121T150320Z-live) query: used only as a fallback.
+            return f"""SELECT ?item ?itemLabel ?website ?employees WHERE {{
   ?item wdt:P31 wd:{self.CLASS_SOFTWARE_COMPANY} .
   {{ ?item wdt:P17 wd:{self.COUNTRY_US} }} UNION {{ ?item wdt:P159/wdt:P17 wd:{self.COUNTRY_US} }}
   ?item wdt:P856 ?website .
   OPTIONAL {{ ?item wdt:P1128 ?employees . }}
   SERVICE wikibase:label {{ bd:serviceParam wikibase:language "en". }}
 }} LIMIT {int(self.limit)}"""
+        # ?desc (English item description) and ?listed (has a stock-exchange statement) are used ONLY
+        # for pre-research prioritisation (vm1.prequalify); they never qualify a company by themselves.
+        # ORDER BY makes the LIMIT window deterministic instead of an arbitrary server-side slice.
+        # NOT yet live-verified: if the service rejects it (HTTP 400) discover() falls back, visibly.
+        return f"""SELECT ?item ?itemLabel ?website ?employees ?desc ?listed WHERE {{
+  ?item wdt:P31 wd:{self.CLASS_SOFTWARE_COMPANY} .
+  {{ ?item wdt:P17 wd:{self.COUNTRY_US} }} UNION {{ ?item wdt:P159/wdt:P17 wd:{self.COUNTRY_US} }}
+  ?item wdt:P856 ?website .
+  OPTIONAL {{ ?item wdt:P1128 ?employees . }}
+  OPTIONAL {{ ?item schema:description ?desc . FILTER(LANG(?desc) = "en") }}
+  BIND(EXISTS {{ ?item wdt:P414 ?exchange }} AS ?listed)
+  SERVICE wikibase:label {{ bd:serviceParam wikibase:language "en". }}
+}} ORDER BY ?item LIMIT {int(self.limit)}"""
 
     def parse(self, data: dict, retrieved_at: str) -> list[Candidate]:
         out: list[Candidate] = []
@@ -165,14 +180,29 @@ class WikidataAdapter(Adapter):
             emp = row.get("employees", {}).get("value")
             if emp and emp.isdigit():
                 attrs["employees"] = int(emp)
+            desc = row.get("desc", {}).get("value")
+            if desc:
+                attrs["description"] = desc[:300]
+            if row.get("listed", {}).get("value") in ("true", "1"):
+                attrs["listed_on_exchange"] = True
             out.append(Candidate(name=name, url=site, discovery_method=AUTOMATED, source=self.name,
                                  source_id=item.rsplit("/", 1)[-1], source_url=item,
                                  source_license=self.license_note, retrieved_at=retrieved_at, attrs=attrs))
         return out
 
+    run_note = ""
+
     def discover(self) -> list[Candidate]:
         self._verify_ids()
-        data = self._get(self.build_query())
+        try:
+            data = self._get(self.build_query(enriched=True))
+            self.run_note = "enriched query (description/listing flag) used for pre-research prioritisation"
+        except DiscoveryBlocked as exc:
+            if "HTTP 400" not in str(exc):  # only a malformed-query rejection; never retry 429/5xx
+                raise
+            data = self._get(self.build_query(enriched=False))
+            self.run_note = (f"enriched query rejected ({exc}); fell back to the basic query: "
+                             "no description/listing data, so no record-based prioritisation")
         return self.parse(data, utc_now_iso())
 
 
