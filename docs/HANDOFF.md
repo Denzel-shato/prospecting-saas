@@ -49,13 +49,33 @@ The other account could inspect a ZIP but could not read or write GitHub directl
 ## Fast path to execution (2026-11-21)
 Read `docs/VM1-START-HERE.md`: architecture A is approved *as a design*, and initial $0 paid-API VM1 pilot B is authorized. **Begin the local VM1 prototype, not Phase 1.** Confirm provider rights and do not incur any API cost.
 
-## VM1 pilot implementation kickoff — 2026-11-21
+## VM1 pilot implementation status — 2026-11-21 (Claude Code session)
 
-- Explicit user approval is recorded in `docs/DECISIONS.md`: architecture approved *as design*, initial no-paid-API VM1 pilot authorized (one ICP, 30–40 companies, no Gmail). No Phase 1 or external spending permission.
-- Created [GitHub issue #1](https://github.com/Denzel-shato/prospecting-saas/issues/1) with the exact build-and-evaluate specification, deliverables, quality checks and stop rules.
-- Created `vm1-pilot` branch from current `main` for prototype development. **This is a branch setup, not an implemented prototype.**
-- The next Claude account should **implement the pilot** instead of producing another architecture review. If it cannot write to GitHub, it must return complete changed files or ZIP; the user can pass them to ChatGPT for review and commit.
-- No discovery, provider API calls, Gmail calls, tests, purchases or live evaluations have been run as part of this kickoff.
+**Prototype implemented on branch `vm1-pilot`, code in `pilot/`. The discovery test has NOT succeeded: no real companies were discovered or evaluated. There are no pilot findings, no relevance numbers, and no go/no-go basis yet.**
+
+### Built (all stdlib-only Python, $0 paid API, no Gmail/sending code)
+Keyless discovery adapters (Wikidata SPARQL, OSM Overpass behind `--ack-overpass-terms`, manual CSV labelled `manual`, synthetic fixture); canonical-domain dedup; SSRF-safe polite fetcher (IP pinning, robots.txt, delay, size cap, off-site redirect refusal); HTML parser (no mailto/tel harvesting); evidence extraction with levels and verbatim-excerpt re-verification; deterministic scoring with hard exclusions and listed unknowns; first-party decision-maker extraction; unsent deterministic drafts with lint; report generator with denominators and human-label ingestion; fail-closed paid-API guard. See `pilot/README.md`.
+
+### Tested (real results)
+- `python3 -m unittest discover -s tests -t .` in `pilot/`: **82 tests pass** (offline). Covers dedup, exclusions, evidence classification, unsupported-claim omission, no guessed contacts, no sending/paid-client imports, fail-closed behavior, SSRF/robots, an end-to-end synthetic run, and the socket transport against a loopback server.
+- Bug found by these tests and fixed: decision-maker titles in uppercase (e.g. "CTO") were never matched.
+- A synthetic offline run works end to end. **It uses fictional `.example` data and proves only that the pipeline runs; it says nothing about discovery or ICP fit.**
+
+### Blocker (exact)
+Live discovery could not run in the Claude Code sandbox: DNS does not resolve and the egress proxy returns 403 on CONNECT for `query.wikidata.org`, `overpass-api.de`, `en.wikipedia.org` and `www.example.com` (only api.github.com is reachable). Recorded by the pipeline itself in `pilot/reports/2026-11-21-live-attempt-sandbox-blocked.md` (0 candidates, $0). Not routed around.
+Consequences: (1) the real-network path (`PinnedTransport` against real TLS hosts, real robots.txt, real Wikidata/Overpass responses) is **untested against the internet**; (2) the Wikidata SPARQL query and Overpass query have never been run, so their result quality and whether Wikidata returns enough US studios with websites are unknown (thin coverage is expected); (3) Wikidata class ID `Q1058914` ("software company") could not be verified by me; the adapter verifies its English label at runtime and aborts if wrong; (4) Overpass usage requires the user to accept its public-instance policy via `--ack-overpass-terms`; I did not ack it on the user's behalf.
+
+### Next action (user, on a normal internet connection)
+1. `cd pilot && python3 -m unittest discover -s tests -t .`
+2. `python3 -m vm1 run --sources wikidata` and read `runs/<id>/report.md`. If fewer than 30 US studios come back, add `--ack-overpass-terms --sources wikidata,openstreetmap` if you accept the Overpass policy, or report that free discovery is insufficient.
+3. Fill `labels_template.csv` yourself (relevant y/n, us_based, decision_maker_correct), then `python3 -m vm1 report --run runs/<id> --labels labels.csv`. No relevance claim should be made without these human labels.
+4. Review first-party-site terms of use for any site you research before using the output; robots.txt is honoured, ToS is not machine-checked.
+
+### Not done
+No real-company run, no labels, no top-20 precision, no decision-maker accuracy, no timing on real fetches. Gates in `docs/VM1-START-HERE.md` remain unmeasured. No decisions were changed in `docs/DECISIONS.md`.
+
+### Commits
+Branch `vm1-pilot`; see `git log` (latest commit recorded in the push). No PR opened.
 
 ## Instructions for the next account
 Read all planning files and the original Phase 0 reports when available. Restate agreed choices separately from proposed revisions. Do not code or incur costs without explicit permission. Finish the session by updating this file with exact work done and commit/PR links.
