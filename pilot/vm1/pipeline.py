@@ -28,9 +28,10 @@ from .score import EXCLUDED, NOT_RESEARCHABLE, score_company
 
 SECONDARY_KEYWORDS = [  # (keyword, priority) lower = fetched first
     ("team", 0), ("leadership", 0), ("people", 0), ("about", 1), ("company", 1), ("who-we-are", 1),
-    ("our-story", 1), ("services", 2), ("what-we-do", 2), ("work", 3), ("case-stud", 3),
-    ("portfolio", 3), ("contact", 4),
-]
+    ("our-story", 1), ("studio", 1), ("agency", 1), ("services", 2), ("what-we-do", 2), ("what-we-build", 2),
+    ("capabilities", 2), ("expertise", 2), ("offerings", 2), ("work", 3), ("case-stud", 3), ("portfolio", 3),
+    ("approach", 3), ("how-we-work", 3), ("process", 3), ("contact", 4),
+]  # per-site page limit (max_secondary) is unchanged; this only widens WHICH pages qualify
 _ASSET_RE = re.compile(r"\.(pdf|jpe?g|png|gif|svg|webp|zip|mp4|mov|docx?|xlsx?|pptx?)$", re.I)
 
 
@@ -50,7 +51,8 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def pick_secondary(home: PageData, home_url: str, limit: int) -> list[str]:
+def rank_secondary(home: PageData, home_url: str) -> list[tuple[int, str]]:
+    """All same-site candidate pages, best first, as (priority, url). Used for fetching AND diagnostics."""
     base = registrable_domain(urlsplit(home_url).hostname or "")
     home_path = urlsplit(home_url).path.rstrip("/")
     seen: set[str] = set()
@@ -72,7 +74,11 @@ def pick_secondary(home: PageData, home_url: str, limit: int) -> list[str]:
         seen.add(norm)
         ranked.append((prio, len(ranked), norm))
     ranked.sort()
-    return [u for _, _, u in ranked[:limit]]
+    return [(p, u) for p, _, u in ranked]
+
+
+def pick_secondary(home: PageData, home_url: str, limit: int) -> list[str]:
+    return [u for _, u in rank_secondary(home, home_url)[:limit]]
 
 
 def homepage_url(cand: Candidate) -> str:
@@ -138,8 +144,13 @@ def research_company(cand: Candidate, fetcher: PoliteFetcher, icp: dict, max_sec
         page = parse_html(res.text or "", url)
         snaps.append(PageSnapshot(url=url, fetched_at=res.fetched_at, page=page, is_homepage=True))
         pages_by_url[url] = page
-        picks = pick_secondary(page, url, max_secondary)
+        ranked_sec = rank_secondary(page, url)
+        picks = [u for _, u in ranked_sec[:max_secondary]]
         rec["secondary_links_found"] = len(picks)
+        # Diagnostics (Issue #3): which eligible pages existed and which were fetched, so "evidence missing from
+        # fetched pages" vs "page never fetched" can be told apart from the run artifacts alone.
+        rec["secondary_candidates"] = [{"url": u, "priority": pr, "fetched": u in picks} for pr, u in ranked_sec[:12]]
+        rec["homepage_text_blocks"] = len(page.blocks)
         for sec in picks:
             sres = fetcher.fetch(sec)
             rec["secondary"].append({"url": sec, "ok": sres.ok, "error": sres.error, "status": sres.status})

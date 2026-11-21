@@ -6,7 +6,7 @@ Python 3.11+, **standard library only** (no installs).
 
 ## Reproduce
     cd pilot
-    python3 -m unittest discover -s tests -t .          # 124 tests, offline
+    python3 -m unittest discover -s tests -t .          # 148 tests, offline
     python3 -m vm1 synthetic                             # offline pipeline check on FICTIONAL data (never a finding)
     python3 -m vm1 run --sources wikidata                # live, keyless, zero-cost discovery
     python3 -m vm1 run --sources wikidata,openstreetmap --ack-overpass-terms   # adds Overpass (see below)
@@ -37,7 +37,7 @@ The evidence and scoring engine now distinguishes `agency_studio`, `saas_vendor`
 
 Service/technology words appearing on a site are not automatically services **offered to clients**: irrelevant references are captured as `mention:*` with no score. Employee counts require unambiguous, present-tense attribution to the company itself; references to client teams, historical figures and ranges remain unknown. Decision-makers require evidence tying the person to the target company, not just a role displayed on its website. Evidence excerpts remain attributed observations, not independently verified truth.
 
-The code includes 42 Issue #2 regression tests, bringing the offline suite to **124 tests** (reported as passing in the implementation handoff). This does **not** establish live lead quality or precision. Full details, root causes, test cases, known false positives/negatives and a live-validation procedure are in [VM1 quality remediation](../docs/VM1-QUALITY-REMEDIATION.md) and [Issue #2 handoff](../docs/ISSUE-2-HANDOFF.md).
+The code includes 42 Issue #2 regression tests, bringing the offline suite to **148 tests** (reported as passing in the implementation handoff). This does **not** establish live lead quality or precision. Full details, root causes, test cases, known false positives/negatives and a live-validation procedure are in [VM1 quality remediation](../docs/VM1-QUALITY-REMEDIATION.md) and [Issue #2 handoff](../docs/ISSUE-2-HANDOFF.md).
 
 ### Live pilot status
 

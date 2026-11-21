@@ -94,7 +94,9 @@ CLIENT_SERVICES_POINTS = 12
 def classify_company(evidence: list[Evidence]) -> tuple[str, list[Evidence], list[str]]:
     """Company type from evidence alone. Returns (type, evidence used, human-readable reasons)."""
     staffing = _ok(evidence, "negative:staffing_recruiting")
-    ident = _ok(evidence, "entity_type:studio_or_agency") or _ok(evidence, "entity_type:client_services")
+    ident_strong = _ok(evidence, "entity_type:studio_or_agency") or _ok(evidence, "entity_type:client_services")
+    ident_weak = _ok(evidence, "entity_type:consulting_engagements")
+    ident = ident_strong or ident_weak
     services = [e for tag in TARGET_SERVICE_TAGS + ("custom_software",) for e in _ok(evidence, f"service:{tag}")]
     vendor = _ok(evidence, "company_type:saas_vendor_signal")
     ent = _ok(evidence, "company_type:enterprise_signal")
@@ -104,9 +106,11 @@ def classify_company(evidence: list[Evidence]) -> tuple[str, list[Evidence], lis
     vendorish = len(vendor_cats) >= VENDOR_MIN_SIGNALS
     if staffing:
         return "staffing", staffing, ["homepage describes a staffing/recruiting business"]
-    if big and not ident:
+    # Only a STRONG identity (self-described studio/agency, or builds-for-clients) can shield a company from the
+    # vendor/enterprise exclusions. The weak "firm's consulting engagements" identity never does (Issue #3).
+    if big and not ident_strong:
         return "enterprise_software", ent, [f"large/listed-corporation signals {sorted(ent_cats)} and no studio/agency self-description"]
-    if vendorish and not ident:
+    if vendorish and not ident_strong:
         return "saas_vendor", vendor, [f"product-vendor signals {sorted(vendor_cats)} and no studio/agency self-description"]
     if ident and services and not vendorish and not big:
         return "agency_studio", ident + services, ["self-described service provider offering target services to clients"]
@@ -177,10 +181,13 @@ def score_company(
 
     ent = _ok(evidence, "entity_type:studio_or_agency")
     cs = _ok(evidence, "entity_type:client_services")
+    eng = _ok(evidence, "entity_type:consulting_engagements")
     if ent:
         add("entity_type: studio/agency wording", ENTITY_POINTS, ent)
     elif cs:
         add("entity_type: builds-for-clients wording (no studio/agency noun)", CLIENT_SERVICES_POINTS, cs)
+    elif eng:
+        add("entity_type: firm's own consulting/client engagements (weak identity)", CLIENT_SERVICES_POINTS, eng)
     else:
         res.unknowns.append("entity_type: no self-referential studio/agency description found")
 

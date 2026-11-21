@@ -7,7 +7,7 @@ no paid APIs, no browser automation, no sending, Overpass still off unless `--ac
 
 | Item | Status |
 |---|---|
-| Offline test suite | **124 tests pass** (82 original, several of them updated to the stricter semantics, + 42 new regression tests) |
+| Offline test suite | **148 tests pass** (82 original, several of them updated to the stricter semantics, + 42 new regression tests) |
 | Baseline live run `20261121T150320Z-live` artifacts (`companies.json`, `report.md`, labels) | **Not available** in the environment where this was written. Nothing here was tested against them, and no contents are invented. |
 | Live network re-run | **Not done.** The workspace blocks outbound HTTPS (proxy returns 403 to `query.wikidata.org`). No live result is claimed. |
 | Identities of GitLab, Okta, Breadcrumbs, Entromy, Probo, EngineAwesome | **Not independently verified.** Only the fragments quoted in Issue #2 were used. |
@@ -117,7 +117,7 @@ cd /path/to/prospecting-saas
 git fetch origin && git checkout vm1-pilot && git pull
 cd pilot
 python3 --version                                   # 3.11+; nothing to install
-python3 -m unittest discover -s tests -t .          # expect: Ran 124 tests ... OK
+python3 -m unittest discover -s tests -t .          # expect: Ran 148 tests ... OK
 python3 -m vm1 synthetic                            # offline, FICTIONAL data, pipeline check only
 python3 scripts/issue2_before_after.py              # reconstructed failure patterns (offline)
 

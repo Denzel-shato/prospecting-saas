@@ -96,3 +96,6 @@ Read all planning files and the original Phase 0 reports when available. Restate
 5. Reachability (baseline 33/40) remains unaddressed; do not bypass robots.txt, SSRF protections or TLS. The exact Claude-generated docs drafts from another account were not available to this update; this entry was authored from the committed Issue #2 handoff and remediation documents.
 
 **Still outside scope:** Phase 1, Gmail/SMTP/sending, paid APIs, and Overpass without explicit usage-policy acknowledgment. Keep `vm1-pilot` separate from `main`.
+
+## Issue #3 (branch `vm1-pilot-issue3`, base 4e67181)
+Completed: offline evidence-extraction fixes (see `docs/ISSUE-3-REPORT.md`). Changed: `pilot/vm1/evidence.py`, `score.py`, `pipeline.py`, new `pilot/tests/test_issue3_regressions.py`, `pilot/scripts/issue3_before_after.py`. Tests: 148 OK. Blockers: no network here; no live re-run; Velvet cause unknown. Next: fresh live run on a networked machine and human labeling. Not merged to main; no live improvement claimed.

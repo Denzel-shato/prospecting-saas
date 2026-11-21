@@ -94,7 +94,12 @@ ENTITY_RE = re.compile(
     r"web (?:agency|studio|development (?:company|agency))|app development (?:company|agency)|"
     r"engineering studio|design (?:and|&) development (?:studio|agency)|"
     r"front-?end (?:agency|studio|shop|consultancy)|react (?:agency|studio|consultancy|development (?:shop|agency))|"
-    r"custom software (?:development )?(?:company|agency|studio|shop)|software consultancy)\b", re.I)
+    r"custom software (?:development )?(?:company|agency|studio|shop)|software consultancy|"
+    r"(?:software|product|web|mobile|app|digital|technology|e-?commerce|ecommerce)\s+(?:engineering|development|design(?: (?:and|&) (?:development|engineering))?)\s+"
+    r"(?:firm|studio|agency|consultancy|shop)|"
+    r"(?:design|development)\s+(?:and|&)\s+(?:development|engineering|strategy)\s+(?:firm|studio|agency|consultancy)|"
+    r"(?:e-?commerce|ecommerce|shopify|headless)\s+(?:agency|studio|development (?:agency|studio|shop))|"
+    r"(?:software|technology|product|engineering) consulting (?:firm|company|practice)|technology consultancy)\b", re.I)
 STAFFING_HARD_RE = re.compile(
     r"\b(?:(?:it|tech|technology|software|engineering) )?(?:staffing|recruiting|recruitment) "
     r"(?:agency|firm|company|services|solutions|partner)\b|"
@@ -263,6 +268,21 @@ OFFER_RE = re.compile(
     r"|\b(?:is|are) our (?:core|focus|specialty|specialism|speciality|craft)\b"
     r"|\b(?:react|next\.?js|typescript|front-?end|web app\w*|custom software)\s+"
     r"(?:development|engineering|consulting|services)\b", re.I)
+# Additional client-development offering structures (Issue #3). Each is only a MARKER inside a sentence that
+# also contains the technology keyword; PRODUCT_FEATURE_RE below still vetoes product/feature wording.
+CUSTOM_BUILD_RE = re.compile(
+    r"\bcustom\s+(?:[\w-]+\s+){0,2}?(?:storefronts?|e-?commerce\s+(?:sites?|stores?|builds?)|websites?|web\s?sites?|"
+    r"web\s?apps?|web applications?|software|apps?|integrations?|builds?|sites?|themes?)\b", re.I)
+SECOND_PERSON_RE = re.compile(r"\b(?:you|your|you(?:'|’)re|you(?:'|’)ll)\b", re.I)
+ENGAGEMENT_RE = re.compile(
+    r"\b(?:the|our) (?:firm|studio|agency|company|team)(?:'|’)s\s+(?:[\w-]+\s+){0,3}?"
+    r"(?:consulting engagements?|client engagements?|client work|client projects?|engagements?|product development|"
+    r"software development|development work)\b|"
+    r"\b(?:we|our team)\b[^.!?]{0,60}?\b(?:project[- ]based|fixed[- ](?:price|scope|fee|bid)|"
+    r"time (?:and|&) materials|retainers?|commissioned (?:development|work|projects?)|project delivery)\b", re.I)
+OFFER_HEADING_RE = re.compile(
+    r"\b(?:what we (?:do|build|make|offer|design|create|deliver)|(?:our )?services|capabilities|expertise|"
+    r"how we (?:help|work)|we (?:build|design|develop)|specialt(?:y|ies)|offerings)\b", re.I)
 # Wording typical of a PRODUCT describing itself (features, supported languages, docs, integrations).
 PRODUCT_FEATURE_RE = re.compile(
     r"\b(?:support(?:s|ed|ing)?|integrat\w+|compatible|sdks?|apis?|plugins?|extensions?|programming languages|"
@@ -278,7 +298,14 @@ CLIENT_SERVICES_RE = re.compile(
     r"\bwe\s+(?:(?:also|primarily|mainly|mostly)\s+)?(?:design|build|develop|ship|deliver|create|engineer|craft)\b"
     r"[^.!?]{0,100}?\bfor\s+(?:our\s+|their\s+)?(?:clients?\b|(?:[\w-]+[ -]){0,2}?"
     r"(?:startups?|founders|scale-?ups|businesses|brands|companies|enterprises|organi[sz]ations)\b)"
-    r"|\bour clients\s+(?:include|are|range)\b", re.I)
+    r"|\bour clients\s+(?:include|are|range)\b"
+    r"|\bwe\s+(?:partner|work)\s+with\s+(?:[\w-]+\s+){0,3}?(?:startups?|founders|scale-?ups|businesses|brands|"
+    r"companies|enterprises|organi[sz]ations|clients?)\s+to\s+(?:design|build|develop|ship|launch|create|deliver)\b"
+    r"|\bwe\s+(?:take on|run|lead|deliver|handle)\b[^.!?]{0,40}\b(?:consulting|client|project)\s+(?:engagements?|projects?|work)\b",
+    re.I)
+CONSULTING_ENGAGEMENT_RE = re.compile(
+    r"\b(?:the|our) (?:firm|studio|agency)(?:'|’)s\s+(?:[\w-]+\s+){0,2}?(?:consulting|client)\s+"
+    r"(?:engagements?|work|projects?)\b", re.I)
 
 # Signals that the site belongs to a PRODUCT vendor / large corporation rather than a services studio.
 VENDOR_SIGNALS: dict[str, tuple[re.Pattern, int]] = {
@@ -289,9 +316,12 @@ VENDOR_SIGNALS: dict[str, tuple[re.Pattern, int]] = {
     "pricing_plans": (re.compile(r"^(?:pricing|plans|plans (?:and|&) pricing|pricing (?:and|&) plans|see pricing|view pricing)$", re.I), 40),
     "docs_integrations": (re.compile(r"^(?:integrations?|api(?: docs| documentation| reference)?|documentation|"
                                      r"developers?|developer docs|docs|changelog|status|trust center)$", re.I), 40),
-    "our_platform": (re.compile(r"\b(?:our|the)\s+(?:[\w-]+\s+){0,2}platform\b|\ball-in-one platform\b|"
+    "our_platform": (re.compile(r"\bour\s+(?:[\w-]+\s+){0,2}platform\b|\ball-in-one platform\b|"
                                 r"\b(?:[\w-]+\s+){1,2}platform that\b", re.I), 400),
-    "customers_at_scale": (re.compile(r"\b(?:trusted|used|loved) by\b[^.]{0,40}\b(?:teams|companies|developers|customers|users)\b|"
+    "customers_at_scale": (re.compile(r"\b(?:trusted|used|loved) by (?:over |more than |nearly )?(?:[\d,]+\+?|thousands|millions|hundreds)\b"
+                                      r"[^.]{0,40}\b(?:teams|companies|developers|customers|users)\b|"
+                                      r"\b(?:trusted|used|loved) by\b[^.]{0,40}\b(?:teams|companies|developers|customers|users)\b"
+                                      r"[^.]{0,25}\b(?:worldwide|globally|around the world)\b|"
                                       r"\b[\d,]+\+? (?:customers|users|teams|developers|companies) "
                                       r"(?:worldwide|around the world|trust|use)\b|"
                                       r"\b(?:millions?|thousands?) of (?:customers|users|developers|teams)\b", re.I), 400),
@@ -336,7 +366,21 @@ def entity_self_referential(text: str, m: re.Match) -> bool:
     return len(clause.split()) <= 3 or bool(SELF_PREFIX_RE.search(clause))
 
 
-def _offering(text: str, m: re.Match, kind: str, ctx, third_party: bool) -> bool:
+def _adjacent_offer(page, i: int) -> bool:
+    """A list item whose lead-in block ("We design and build:") or governing heading says the company offers it."""
+    if page is None or i < 0:
+        return False
+    if OFFER_HEADING_RE.search(page.section_at(i)):
+        return True
+    for j in (i - 1, i - 2):
+        if 0 <= j < len(page.blocks) and not (page.ctx_at(j) & UNRELIABLE_CTX) and not block_is_third_party(page, j):
+            prev = page.blocks[j].rstrip()
+            if prev.endswith(":") and (OFFER_RE.search(prev) or ENGAGEMENT_RE.search(prev)):
+                return True
+    return False
+
+
+def _offering(text: str, m: re.Match, kind: str, ctx, third_party: bool, page=None, i: int = -1) -> bool:
     """True when the technology match sits in wording where the company offers it to clients."""
     if third_party or (ctx & UNRELIABLE_CTX) or kind in NON_OFFERING_KINDS:
         return False
@@ -349,6 +393,12 @@ def _offering(text: str, m: re.Match, kind: str, ctx, third_party: bool) -> bool
         return True
     if kind == "services" and len(text) <= 220:
         return True  # a short services-page list item is the company listing its own services
+    if ENGAGEMENT_RE.search(sent):
+        return True  # firm-possessive engagements / delivery model ("the firm's consulting engagements")
+    if CUSTOM_BUILD_RE.search(sent) and not SECOND_PERSON_RE.search(sent):
+        return True  # "Custom storefronts on ... headless on Next.js." (no "you": not product-feature copy)
+    if len(text) <= 300 and _adjacent_offer(page, i):
+        return True  # short item under a services/what-we-build heading or an offering lead-in line
     return any(entity_self_referential(sent, e) for e in ENTITY_RE.finditer(sent))
 
 
@@ -367,7 +417,7 @@ def _service_evidence(company_key: str, snaps: list[PageSnapshot], tag: str, pat
                 m = pat.search(text)
                 if not m:
                     continue
-                if _offering(text, m, kind, ctx, tp):
+                if _offering(text, m, kind, ctx, tp, snap.page, _i):
                     return _ev(company_key, f"service:{tag}", tag, snap, text, m,
                                "company describes offering this to clients"), None
                 if mention is None:
@@ -397,7 +447,29 @@ def _identity_evidence(company_key: str, snaps: list[PageSnapshot]) -> list[Evid
                 out.append(_ev(company_key, "entity_type:client_services", "client_services", snap, text, m,
                                "company says it builds for clients (no studio/agency noun found)"))
                 return out
+    # weakest route: the firm speaks of ITS OWN consulting/client engagements (also on a team bio). Counts toward
+    # agency identity only when no vendor/enterprise profile exists (see score.classify_company); never shields.
+    for snap in snaps:
+        for text, _i, kind, ctx, tp in _items(snap):
+            if tp or (ctx & UNRELIABLE_CTX) or kind in NON_SELF_KINDS:
+                continue
+            m = CONSULTING_ENGAGEMENT_RE.search(text)
+            if m:
+                out.append(_ev(company_key, "entity_type:consulting_engagements", "consulting_engagements", snap, text, m,
+                               "firm refers to its own consulting/client engagements (weak identity; does not override vendor signals)"))
+                return out
     return out
+
+
+# A negated mention ("No free trial needed", "It's not the platform") is not a vendor/enterprise signal.
+NEGATION_RE = re.compile(
+    r"\b(?:not|no|never|without|rather than|instead of|beyond|aren(?:'|’)t|isn(?:'|’)t|don(?:'|’)t|doesn(?:'|’)t)\b|n(?:'|’)t\b",
+    re.I)
+
+
+def _negated(text: str, m: re.Match) -> bool:
+    lo, _ = sentence_bounds(text, m.start(), m.end())
+    return NEGATION_RE.search(text[lo:m.start()][-40:]) is not None
 
 
 def _signal_evidence(company_key: str, snaps: list[PageSnapshot], claim: str,
@@ -409,7 +481,7 @@ def _signal_evidence(company_key: str, snaps: list[PageSnapshot], claim: str,
             for text, _i, kind, ctx, tp in _signal_items(snap):
                 if tp or kind in ("editorial", "docs") or len(text) > maxlen:
                     continue
-                m = pat.search(text)
+                m = next((x for x in pat.finditer(text) if not _negated(text, x)), None)
                 if m:
                     out.append(_ev(company_key, claim, cat, snap, text, m, note))
                     done = True
