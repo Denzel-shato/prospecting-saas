@@ -25,7 +25,26 @@ Run a disposable local validation **before Phase 1**. Only test discovery from a
 - Provider retention/display/commercial-use rights are unresolved (Exa, Brave, Tavily, Hunter, Apollo).
 - Second independent human labeler has not been assigned.
 - Original full PRD has not been exported; `docs/PRODUCT-BRIEF.md` is a summary, not verbatim PRD.
-- Original Phase 0 PDFs and extracts may still need uploading to `docs/reviews/`.
+- Both Phase 0 **text extracts are committed** in `docs/reviews/` (`phase0-v1-extracted.txt` and `phase0-v2-extracted.txt`). The original PDF files are **not** committed.
+
+## Cross-account handoff received — 2026-11-21
+
+A subsequent Claude account read a ZIP of this repository and reported reviewing the six key project documents plus both extracted Phase 0 reports. The user pasted its session summary into ChatGPT. **This section reflects that pasted summary, not a verbatim copy of the Claude-generated HANDOFF.md artifact.** That account reported no GitHub write access, no implementation, no API calls, and no spending.
+
+### Issues identified by that account — still unresolved
+- Budget conflict: Phase 0 v2 proposes a **$100** VM1 cap, whereas `docs/PROPOSED-VM1-REVISIONS.md` suggests a **$10** initial checkpoint and **$50** ceiling. Neither amount is approved.
+- Sending scope conflict: v2 includes Gmail tests E/F in VM1 and makes E an exit gate; later recommendations move all email sending tests to a separate milestone.
+- Discovery and qualification test thresholds differ between the v2 report and proposed revisions; user must set final gates.
+- Provider candidates conflict: v2 rules out Tavily, while later review recommends re-evaluating its current terms and use restrictions. No provider rights are confirmed.
+- Repo visibility: the repository has been made **public** to help another account access it, but that did not unblock the other account's GitHub web fetcher. GitHub must be explicitly connected there or the files attached as ZIP. Consider restoring private visibility if public access is unnecessary.
+
+### Next milestone decision sequence
+1. Resolve architecture approval (including provider rights remaining open) **separately** from VM1 authorization.
+2. Resolve VM1's timing, exact scope, provider candidates, acceptance thresholds, evaluation method, three sample seller profiles, second human labeler, and spending permission.
+3. Do not authorize implementation or paid calls merely because documentation has been synchronized.
+
+### Cross-account collaboration note
+The other account could inspect a ZIP but could not read or write GitHub directly. At the end of future sessions, ask Claude to return the changed Markdown file or ZIP when its GitHub integration is unavailable. ChatGPT's connected GitHub tools can apply those edits after reviewing the exact file content; do not assume a file was committed merely because Claude said it drafted one.
 
 ## Instructions for the next account
 Read all planning files and the original Phase 0 reports when available. Restate agreed choices separately from proposed revisions. Do not code or incur costs without explicit permission. Finish the session by updating this file with exact work done and commit/PR links.
