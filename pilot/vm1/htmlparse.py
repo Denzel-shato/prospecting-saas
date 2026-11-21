@@ -19,6 +19,51 @@ BLOCK_TAGS = {
 }
 SKIP_TAGS = {"style", "noscript", "svg", "template"}
 MAX_BLOCK = 2000
+
+# Structural context flags. A block carrying THIRD_PARTY/BLOG/DOCS is not the company speaking
+# about itself (testimonial, client logo, partner, article, documentation).
+THIRD_PARTY, BLOG, DOCS, CHROME = "third_party", "blog", "docs", "chrome"
+VOID_TAGS = {"br", "img", "hr", "input", "meta", "link", "area", "base", "col", "embed", "source",
+             "track", "wbr", "param"}
+_CLASS_THIRD = re.compile(
+    r"testimonial|review|quote|endorse|customer-?stor|client-?logo|logo-?(?:grid|wall|cloud|strip)|"
+    r"trusted-?by|case-?stud|portfolio-?item|partner|sponsor|press-?mention|featured-?in", re.I)
+_CLASS_BLOG = re.compile(r"(?:^|[\s_-])(?:blog|post|article|news|press|changelog|entry)(?:$|[\s_-])", re.I)
+_CLASS_DOCS = re.compile(r"(?:^|[\s_-])(?:docs?|documentation|api-?reference|markdown-body)(?:$|[\s_-])", re.I)
+_HEAD_THIRD = re.compile(
+    r"testimonial|what (?:our )?(?:clients?|customers?|partners?|users?) (?:say|think|are saying)|"
+    r"\b(?:our )?(?:clients?|customers?|partners?)\b|trusted by|featured (?:in|on)|case stud|"
+    r"\breviews?\b|\bpress\b|as seen|\badvisors?\b|\binvestors?\b|backed by|\bsponsors?\b|loved by",
+    re.I)
+_HEAD_BLOG = re.compile(r"\bblog\b|latest (?:posts|news|articles)|\binsights\b|\bresources\b|\bnews\b|from the blog", re.I)
+
+
+def tag_flags(tag: str, attrs: dict) -> frozenset:
+    flags = set()
+    if tag in ("blockquote", "q", "cite"):
+        flags.add(THIRD_PARTY)
+    if tag in ("nav", "footer", "aside"):
+        flags.add(CHROME)
+    if tag == "article":
+        flags.add(BLOG)
+    ident = f"{attrs.get('class', '')} {attrs.get('id', '')}"
+    if ident.strip():
+        if _CLASS_THIRD.search(ident):
+            flags.add(THIRD_PARTY)
+        if _CLASS_BLOG.search(ident):
+            flags.add(BLOG)
+        if _CLASS_DOCS.search(ident):
+            flags.add(DOCS)
+    return frozenset(flags)
+
+
+def heading_flags(text: str) -> frozenset:
+    flags = set()
+    if _HEAD_THIRD.search(text):
+        flags.add(THIRD_PARTY)
+    if _HEAD_BLOG.search(text):
+        flags.add(BLOG)
+    return frozenset(flags)
 MAX_BLOCKS = 5000
 MAX_LINKS = 400
 _WS = re.compile(r"\s+")
@@ -37,6 +82,19 @@ class PageData:
     blocks: list[str] = field(default_factory=list)
     links: list[tuple[str, str]] = field(default_factory=list)
     jsonld_raw: list[str] = field(default_factory=list)
+    # Parallel to ``blocks``: structural context flags and the nearest preceding heading text.
+    block_ctx: list[frozenset] = field(default_factory=list)
+    block_section: list[str] = field(default_factory=list)
+
+    def ctx(self, i: int) -> frozenset:
+        return self.block_ctx[i] if i < len(self.block_ctx) else frozenset()
+
+    def section(self, i: int) -> str:
+        return self.block_section[i] if i < len(self.block_section) else ""
+
+    def iter_blocks(self) -> Iterator[tuple[int, str, frozenset, str]]:
+        for i, b in enumerate(self.blocks):
+            yield i, b, self.ctx(i), self.section(i)
 
     def verifiable_texts(self) -> list[str]:
         """Every string an excerpt may legitimately be copied from."""
@@ -67,6 +125,12 @@ class _Extractor(HTMLParser):
         super().__init__(convert_charrefs=True)
         self.base = base_url
         self.blocks: list[str] = []
+        self.block_ctx: list[frozenset] = []
+        self.block_section: list[str] = []
+        self.stack: list[tuple[str, frozenset]] = []
+        self.buf_flags: set = set()
+        self.section_flags: frozenset = frozenset()
+        self.section_text = ""
         self.buf: list[str] = []
         self.skip = 0
         self.in_title = False
@@ -83,8 +147,18 @@ class _Extractor(HTMLParser):
     def _flush(self) -> None:
         text = norm_ws("".join(self.buf))
         self.buf = []
+        flags = frozenset(self.buf_flags) | self.section_flags
+        self.buf_flags = set()
         if text and len(self.blocks) < MAX_BLOCKS:
             self.blocks.append(text[:MAX_BLOCK])
+            self.block_ctx.append(flags)
+            self.block_section.append(self.section_text)
+
+    def _stack_flags(self) -> frozenset:
+        out: set = set()
+        for _, f in self.stack:
+            out |= f
+        return frozenset(out)
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         a = {k.lower(): (v or "") for k, v in attrs}
@@ -113,6 +187,8 @@ class _Extractor(HTMLParser):
             self.a_text = []
         if tag in BLOCK_TAGS:
             self._flush()
+        if tag not in VOID_TAGS:
+            self.stack.append((tag, tag_flags(tag, a)))
 
     def handle_endtag(self, tag: str) -> None:
         if tag == "script":
@@ -137,8 +213,16 @@ class _Extractor(HTMLParser):
                 absolute, _ = urldefrag(urljoin(self.base, href))
                 if urlsplit(absolute).scheme in ("http", "https") and len(self.links) < MAX_LINKS:
                     self.links.append((absolute, norm_ws("".join(self.a_text))))
+        if tag in ("h1", "h2", "h3", "h4", "h5", "h6"):
+            head = norm_ws("".join(self.buf))
+            self.section_flags = heading_flags(head)
+            self.section_text = head[:120]
         if tag in BLOCK_TAGS:
             self._flush()
+        for i in range(len(self.stack) - 1, -1, -1):  # pop to the matching open tag, if any
+            if self.stack[i][0] == tag:
+                del self.stack[i:]
+                break
 
     def handle_data(self, data: str) -> None:
         if self.in_jsonld:
@@ -150,6 +234,8 @@ class _Extractor(HTMLParser):
             self.title_parts.append(data)
             return
         self.buf.append(data)
+        if data.strip():
+            self.buf_flags |= self._stack_flags()
         if self.a_href is not None:
             self.a_text.append(data)
 
@@ -170,4 +256,6 @@ def parse_html(html: str, url: str) -> PageData:
         blocks=ex.blocks,
         links=ex.links,
         jsonld_raw=ex.jsonld_raw,
+        block_ctx=ex.block_ctx,
+        block_section=ex.block_section,
     )
