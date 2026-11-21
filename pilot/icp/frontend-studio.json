@@ -1,0 +1,16 @@
+{
+  "id": "frontend-studio-us-v1",
+  "seller": "Hypothetical freelance/boutique React/Next.js frontend development studio (dashboards, client portals, SaaS interfaces). Not a real business.",
+  "target": "Independent US software development / product studios / agencies, roughly 5-50 staff, that might benefit from delivery capacity or frontend engineering help.",
+  "target_roles": ["founder", "CEO", "CTO", "engineering or delivery head"],
+  "size_band": [5, 50],
+  "size_hard_max": 250,
+  "hard_exclusions": [
+    "recruiters / staffing firms",
+    "big senior-only consultancies",
+    "non-US companies",
+    "unrelated companies",
+    "duplicate domains"
+  ],
+  "notes": "Client work, hiring, growth or project activity are NOT evidence of current buying intent."
+}

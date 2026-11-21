@@ -1,0 +1,56 @@
+{
+  "_notice": "SYNTHETIC FIXTURE: every company, person, host and page here is FICTIONAL (reserved .example TLD). Used only to exercise the pipeline offline. Results from it are NEVER pilot findings and never count toward discovery metrics.",
+  "candidates": [
+    {"name": "Brightlane Studio", "url": "https://brightlane-studio.example/"},
+    {"name": "Brightlane Studio (dup listing)", "url": "https://www.BRIGHTLANE-studio.example/about?utm_source=x"},
+    {"name": "Brightlane Studio, LLC", "url": "https://brightlane.example/"},
+    {"name": "Northwind UI", "url": "https://northwind-ui.example/"},
+    {"name": "TalentBridge", "url": "https://talentbridge-staffing.example/"},
+    {"name": "London Pixel", "url": "https://londonpixel.example/"},
+    {"name": "Megacorp Consulting", "url": "https://megacorp-consulting.example/"},
+    {"name": "Quiet Studio", "url": "https://quietstudio.example/"},
+    {"name": "Robots Blocked Co", "url": "https://robotsblocked.example/"},
+    {"name": "Slow Server Co", "url": "https://slowserver.example/"},
+    {"name": "Redirector Co", "url": "https://redirector.example/"},
+    {"name": "PixelForge Labs", "url": "https://pixelforge-labs.example/"},
+    {"name": "StaffAug Co", "url": "https://staffaug-co.example/"},
+    {"name": "Directory listing", "url": "https://clutch.co/profile/brightlane-studio"}
+  ],
+  "hosts": {
+    "brightlane-studio.example": {
+      "robots": "User-agent: *\nAllow: /\nCrawl-delay: 1",
+      "pages": {
+        "/": {"file": "pages/brightlane_home.html"},
+        "/about": {"file": "pages/brightlane_about.html"},
+        "/team": {"file": "pages/brightlane_team.html"},
+        "/work": {"file": "pages/brightlane_work.html"}
+      }
+    },
+    "www.brightlane-studio.example": {"pages": {"/about": {"file": "pages/brightlane_about.html"}}},
+    "northwind-ui.example": {
+      "pages": {
+        "/": {"file": "pages/northwind_home.html"},
+        "/about": {"file": "pages/northwind_about.html"},
+        "/services": {"file": "pages/northwind_services.html"}
+      }
+    },
+    "talentbridge-staffing.example": {"pages": {"/": {"file": "pages/talentbridge_home.html"}}},
+    "londonpixel.example": {"pages": {"/": {"file": "pages/londonpixel_home.html"}}},
+    "megacorp-consulting.example": {"pages": {"/": {"file": "pages/megacorp_home.html"}}},
+    "quietstudio.example": {"pages": {"/": {"file": "pages/quiet_home.html"}}},
+    "robotsblocked.example": {
+      "robots": "User-agent: *\nDisallow: /",
+      "pages": {"/": {"file": "pages/quiet_home.html"}}
+    },
+    "slowserver.example": {"behavior": "timeout"},
+    "redirector.example": {"pages": {"/": {"status": 301, "location": "http://intranet-redirect.example/"}}},
+    "intranet-redirect.example": {"ip": "10.0.0.5", "pages": {"/": {"file": "pages/quiet_home.html"}}},
+    "pixelforge-labs.example": {
+      "pages": {
+        "/": {"file": "pages/pixelforge_home.html"},
+        "/leadership": {"file": "pages/pixelforge_leadership.html"}
+      }
+    },
+    "staffaug-co.example": {"pages": {"/": {"file": "pages/staffaug_home.html"}}}
+  }
+}
