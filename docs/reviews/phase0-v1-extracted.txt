@@ -1,0 +1,1160 @@
+<PARSED TEXT FOR PAGE: 1 / 23>
+Prospecting SaaS: Architecture Review (Phase 0)
+
+
+
+
+Prospecting SaaS: Architecture Review
+(Phase 0)
+  ​Nov 21, 2026 · ​@Dee
+
+
+
+1. Opportunity and differentiation
+Verdict: a real opportunity, but only if "evidence-backed qualification" is the product
+and discovery is treated as a commodity. The PRD is sound on direction. Its main
+weakness is breadth: it tries to serve every B2B service provider on day one.
+
+Why it can work
+
+       Lead-data tools (Apollo, Hunter and similar) sell volume and contact data. None of
+       what they sell is an explanation of why a company fits this seller. That gap is the PRD's
+       thesis, and it is a good one.
+       Generic AI cold email is now widely recognised and widely ignored. Evidence-
+       grounded, reviewable outreach is a credible counter-position.
+       The target users (freelancers, small agencies) cannot afford a research team and are
+       underserved by enterprise tools.
+
+Where differentiation is real vs. claimed
+
+
+  Claim in PRD                                    Real moat?                     Comment
+
+  Evidence records per                            Yes, if the UI makes sources   Hard to copy well; cheap to fake.
+  claim                                           one click away
+
+  Transparent,                                    Partly                         Easy to imitate as a feature; the
+  configurable scoring                                                           moat is calibrated scoring
+                                                                                 learned from outcomes.
+
+  Per-user ICP, no industry                       No                             Table stakes.
+  hardcoding
+
+  Human approval before                           Positioning, not a moat        Also a compliance asset.
+  send
+
+  Discovery engine                                No                             Depends on third-party search
+                                                                                 and data; you will not out-index
+                                                                                 anyone.
+
+
+
+
+                                                                                                             Page 1 of 23
+<PARSED TEXT FOR PAGE: 2 / 23>
+Prospecting SaaS: Architecture Review (Phase 0)
+
+
+
+
+Differentiation I would bet on: the outcome loop. Section 18 of the PRD says the platform
+"should eventually learn" which signals predict replies. That is the only durable advantage,
+and it argues for capturing outcome data (reply, meeting, conversion) from the first
+release, even though learning from it is deferred.
+
+Biggest threats: incumbents bolting on AI research (Apollo and others already ship AI
+features), and the economics: deep per-company research costs real money per prospect
+(see section 6), which constrains pricing for a freelancer audience.
+
+Recommendation: launch the shared platform as specified, but pick one wedge for go-to-
+market and prompt tuning (for example, small software and design agencies selling to
+other agencies or SaaS companies). Configurability stays; the tested experience is
+narrow.
+
+
+2. Critique of the PRD
+The PRD is unusually disciplined about honesty, scope and safety. Its main problems are
+an undefined data strategy, a launch audience that is too wide, and several
+requirements that cannot be met as written.
+
+Strengths worth keeping
+
+       Evidence taxonomy (verified / source-reported / inferred / unknown) and "missing is
+       not positive" scoring rules.
+       Human-approved sending as the default; automation deferred.
+       Provider adapters, server-side tenant isolation, untrusted-content handling.
+       A clear "defer" list that resists copying competitors.
+
+Problems and recommended fixes
+
+
+  #           Issue                               Why it matters            Recommendation
+
+  1           "All B2B service                    Prompts, scoring          One wedge segment for
+              providers" as launch                defaults and discovery    tuning and marketing; keep
+              audience                            queries cannot be tuned   configurability underneath.
+                                                  for everyone; quality
+                                                  (the stated priority)
+                                                  suffers.
+
+
+
+
+                                                                                                  Page 2 of 23
+<PARSED TEXT FOR PAGE: 3 / 23>
+Prospecting SaaS: Architecture Review (Phase 0)
+
+
+
+
+  #           Issue                               Why it matters              Recommendation
+
+  2           No data-sourcing                    Web search returns          Decide the primary
+              strategy for company                pages, not clean            discovery source before
+              discovery                           company records.            building (section 5 of this
+                                                  Coverage by country         review). Plan for CSV and
+                                                  and niche will be uneven,   URL import as a first-class
+                                                  and no single provider      path, not a fallback.
+                                                  fixes that.
+
+  3           Decision-maker discovery            Public search rarely        Treat "team page found on
+              has no lawful source for            yields verified names       the company's own site" as
+              small firms                         and emails. Licensed        the primary evidence; paid
+                                                  databases restrict reuse    enrichment is optional and
+                                                  and resale (see section     metered.
+                                                  5).
+
+  4           Gmail reply tracking vs.            Reading replies needs       MVP sends with
+              "minimal scopes"                    Gmail restricted scopes,     gmail.send only; replies
+                                                  which trigger an annual     are marked manually.
+                                                  third-party security        Decide on reply sync as a
+                                                  assessment (CASA).          funded, separate project.
+                                                  Sending alone does not.
+
+  5           "Wait for review"                   Seven sequential phases     Add a thin vertical slice
+              milestone gating plus a 7-          delay the first user-       early: import 20 URLs,
+              phase plan                          visible value (a            research, score, draft. Run it
+                                                  researched, scored          before building billing,
+                                                  company) to phase 3.        pipeline and settings.
+
+  6           Scoring: deterministic              Scores without ground       Ship a small labelled test set
+              rules plus AI, but no               truth look precise and      (50-100 companies, user-
+              calibration plan                    are not.                    judged) and a regression
+                                                                              test for scorer changes.
+
+  7           Cost is unbounded per               Deep research with web      Per-campaign and per-
+              prospect                            search and LLM calls can    company cost caps, with
+                                                  cost cents to dollars per   cost recorded on every job
+                                                  company. Section 16         run.
+                                                  mentions limits but not
+                                                  per-operation budgets.
+
+
+
+
+                                                                                                      Page 3 of 23
+<PARSED TEXT FOR PAGE: 4 / 23>
+Prospecting SaaS: Architecture Review (Phase 0)
+
+
+
+
+  #           Issue                               Why it matters             Recommendation
+
+  8           Compliance is "user's               Individuals and sole       Store recipient type and
+              responsibility" but UK              traders are treated more   lawful-basis note per
+              PECR and GDPR rules                 strictly than limited      contact; default to blocking
+              differ by recipient type            companies in the UK. A     sends where the type is
+                                                  tool that does not         unknown. Needs legal
+                                                  capture recipient type     review (not legal advice
+                                                  cannot support             here).
+                                                  compliant use.
+
+  9           Pipeline stages overlap             "Approved", "Draft         Three separate state
+              with a campaign status              ready", "Qualified" mix    machines: research state,
+              model                               qualification state,       outreach state, relationship
+                                                  outreach state and         stage.
+                                                  relationship state.
+
+  10          Multi-tenant requirement            EU/UK prospects'           Decide hosting region and
+              stated, but regional                personal data, plus EU     retention defaults in phase
+              hosting, retention periods          customers, bring GDPR      0.
+              and DPA are not                     processor duties.
+
+  11          Missing: billing                    New senders damage         Add sender-health checks
+              mechanics, abuse                    deliverability quickly;    and tenant-level suspension
+              prevention, onboarding              one abusive tenant can     to MVP scope.
+              for sender domain (SPF,             harm others.
+              DKIM, DMARC)
+
+  12          Missing: a metric for               Success metrics            Sample audit: weekly
+              research accuracy                   measure funnel, not        human check of N evidence
+                                                  whether claims are         records, tracked as "claim
+                                                  correct.                   accuracy".
+
+
+Requirements I would soften or defer: user-customisable pipeline stages (MVP: fixed
+stages), reply detection, scheduled refresh (MVP: manual refresh), and CSV export of
+contacts (keep, but log it, since it moves personal data out).
+
+
+3. Recommended technical architecture
+A modular monolith (one repo, one deployable app) on managed PostgreSQL, with a
+durable job layer for everything slow, external or billable. The PRD's proposal is broadly
+right. I would change three things: add an evidence-verification step that no LLM output
+can bypass, keep Gmail to the send-only scope, and avoid microservices entirely at this
+stage.
+
+
+
+
+                                                                                                    Page 4 of 23
+<PARSED TEXT FOR PAGE: 5 / 23>
+Prospecting SaaS: Architecture Review (Phase 0)
+
+
+
+
+architecture · 4 layers, 1 database, 1 job layer
+
+Web requests only read data and enqueue jobs. Jobs call providers through adapters,
+write results and cost records to Postgres, and the UI reads the outcome. Each box on the
+left is a module with a public interface, not a separate service.
+
+
+Choices, with the reasoning
+
+  Area                             Recommendation                          Reason and what to validate
+
+  Frontend                         Next.js, React, TypeScript, Tailwind,   Matches the PRD; fastest path to
+                                   a component library such as             a productive table-heavy UI.
+                                   shadcn/ui                               Assumption, not a finding.
+
+  Backend shape                    Modular monolith; server actions        Fewer moving parts for a small
+                                   and route handlers call a service       team. Module boundaries keep a
+                                   layer with typed inputs (Zod)           later split possible.
+
+
+
+
+                                                                                                         Page 5 of 23
+<PARSED TEXT FOR PAGE: 6 / 23>
+Prospecting SaaS: Architecture Review (Phase 0)
+
+
+
+
+  Area                             Recommendation                         Reason and what to validate
+
+  Database                         PostgreSQL via Supabase Pro to         Relational fit is clear. Use RLS as a
+                                   start (Auth, row-level security,       second line of defence; all
+                                   storage included)                      business logic still goes through
+                                                                          the server service layer. Keep
+                                                                          queries in Drizzle or Kysely so the
+                                                                          database can move providers.
+                                                                          Validate: RLS performance on the
+                                                                          largest tables.
+
+  Background                       Inngest or Trigger.dev; pick after a   Both give retries, scheduling,
+  jobs                             one-day spike                          concurrency control and status.
+                                                                          Inngest meters per step and runs
+                                                                          inside your own hosting;
+                                                                          Trigger.dev runs tasks on its own
+                                                                          compute with no serverless
+                                                                          timeout and meters per run plus
+                                                                          compute seconds. Vendor price
+                                                                          pages disagree across secondary
+                                                                          sources, so confirm on the
+                                                                          vendors' own pages.
+
+  AI layer                         A thin internal wrapper: schema-       Avoids lock-in without a heavy
+                                   validated structured output, per-      framework. Cheap model for
+                                   task model routing, retries, token     extraction and classification;
+                                   and cost logging                       stronger model for qualification
+                                                                          rationale and email drafting.
+
+  Evidence                         Deterministic check that every         Strongest single control against
+  integrity                        stored excerpt appears in the          fabricated claims. LLM output
+                                   fetched page text, and that the URL    without a verifiable excerpt is
+                                   was actually fetched in that job       stored as inferred, never verified.
+
+  Page fetching                    Own fetcher: robots.txt respected,     Safer and cheaper. Some search
+                                   SSRF protection, size and time         APIs return page contents, which
+                                   limits, text extraction; no headless   reduces fetching.
+                                   browser in the MVP
+
+  Email                            Gmail API with gmail.send only         Avoids the restricted-scope
+                                                                          security assessment (section 5).
+
+  Observability                    Sentry for errors, structured logs     Cost visibility is a product
+                                   with job and workspace ids, a cost-    requirement, not just ops.
+                                   per-job table
+
+
+
+
+                                                                                                         Page 6 of 23
+<PARSED TEXT FOR PAGE: 7 / 23>
+Prospecting SaaS: Architecture Review (Phase 0)
+
+
+
+
+State machines to keep separate
+   1. Research state per company: queued, fetching, extracting, scored, failed, stale.
+   2. Outreach state per message: draft, approved, queued, sent, bounced, suppressed.
+   3. Relationship stage per prospect: the user-visible pipeline.
+
+Mixing these (as the PRD's single stage list does) makes reporting and recovery harder.
+
+
+What I would not build yet
+Microservices, a vector database, a headless-browser fleet, a self-built email verifier,
+custom workflow builders.
+
+
+4. Database schema
+About 25 tables in PostgreSQL; every tenant-owned row carries workspace_id , and
+every cross-table reference is checked to stay inside one workspace. This is a proposal
+for review, not final DDL; column lists show what matters, not everything.
+
+
+Entities
+
+  Group                      Table                Key columns                Notes
+
+  Identity                    users               id, email, auth_id         Managed by the
+                                                                             auth provider.
+
+                              workspaces          id, name, plan, region,    Billing and data-
+                                                  created_at                 residency unit.
+
+                              memberships         workspace_id, user_id,     Unique on
+                                                  role (owner / admin /      (workspace_id,
+                                                  member)                    user_id).
+
+                              business_profiles   workspace_id, services     The seller's own
+                                                  (jsonb), value_prop,       profile used for
+                                                  portfolio_links, tone,     research and
+                                                  exclusions                 drafting.
+
+  Targeting                   icps                id, workspace_id, name,    Versioned:
+                                                  criteria (jsonb, schema-   campaigns pin an
+                                                  validated), exclusions,    icp_version .
+                                                  instructions
+
+
+
+
+                                                                                              Page 7 of 23
+<PARSED TEXT FOR PAGE: 8 / 23>
+Prospecting SaaS: Architecture Review (Phase 0)
+
+
+
+
+  Group                      Table                 Key columns                 Notes
+
+                              campaigns            id, workspace_id, icp_id,   Cost cap enforced
+                                                   icp_version, keywords,      by jobs.
+                                                   target_volume,
+                                                   research_depth, status,
+                                                   cost_cap
+
+  Companies                   companies            id, workspace_id,           Unique on
+                                                   canonical_domain,           (workspace_id,
+                                                   name, country,              canonical_domain).
+                                                   summary, first_seen_at      Per-workspace; see
+                                                                               decision below.
+
+                              company_sources      company_id, provider,       Where each
+                                                   source_url,                 discovery came
+                                                   discovered_at, raw_ref      from.
+
+                              campaign_companies   campaign_id,                The prospect: one
+                                                   company_id,                 company in one
+                                                   research_state,             campaign.
+                                                   relationship_stage,
+                                                   current_assessment_id
+
+  Research                    research_runs        id, company_id, status,     One row per job
+                                                   started_at, finished_at,    execution.
+                                                   cost_usd, error
+
+                              evidence             id, workspace_id,           excerpt_verified
+                                                   subject_type,               flag set by the
+                                                   subject_id, claim,          deterministic check.
+                                                   source_url, source_title,
+                                                   source_type, excerpt,
+                                                   content_hash,
+                                                   fetched_at,
+                                                   published_at,
+                                                   verification (verified /
+                                                   source_reported /
+                                                   inferred / unverified),
+                                                   confidence
+
+                              company_facts        company_id, field, value,   Structured fields; a
+                                                   evidence_id, status         fact without
+                                                                               evidence is stored
+                                                                               as unverified .
+
+
+
+
+                                                                                               Page 8 of 23
+<PARSED TEXT FOR PAGE: 9 / 23>
+Prospecting SaaS: Architecture Review (Phase 0)
+
+
+
+
+  Group                      Table                    Key columns                  Notes
+
+  Qualification               assessments             id,                          Immutable; a re-
+                                                      campaign_company_id,         score adds a row.
+                                                      scorer_version, overall,
+                                                      category, explanation,
+                                                      created_at
+
+                              assessment_dimensions   assessment_id,               Eight dimensions
+                                                      dimension, score,            from the PRD;
+                                                      weight, missing_info,        weights come from
+                                                      negative_signals,            the campaign.
+                                                      evidence_ids
+
+                              assessment_overrides    assessment_id, user_id,      Part of the audit
+                                                      from_category,               trail.
+                                                      to_category, reason
+
+  Contacts                    contacts                id, workspace_id,            recipient_type
+                                                      company_id, name, title,     supports PECR and
+                                                      profile_url, source,         GDPR rules.
+                                                      recipient_type
+                                                      (corporate / individual /
+                                                      unknown)
+
+                              contact_emails          contact_id, email, status    Unique on
+                                                      (verified / public /         (workspace_id,
+                                                      provider / unverified /      lower(email)).
+                                                      guessed), source,
+                                                      verified_at
+
+  Outreach                    drafts                  id,
+                                                      campaign_company_id,
+                                                      contact_id, status,
+                                                      current_version_id
+
+                              draft_versions          draft_id, subject, body,     Append-only:
+                                                      author (ai / user), model,   approved text is
+                                                      prompt_version,              never edited in
+
+                                                      evidence_ids                 place.
+
+                              email_accounts          workspace_id, user_id,       Tokens encrypted;
+                                                      provider, scopes,            never returned to
+                                                      token_ciphertext,            the client.
+                                                      key_id
+
+
+
+
+                                                                                                    Page 9 of 23
+<PARSED TEXT FOR PAGE: 10 / 23>
+Prospecting SaaS: Architecture Review (Phase 0)
+
+
+
+
+  Group                      Table                Key columns                Notes
+
+                              email_messages      id, draft_version_id,      Unique
+                                                  account_id,                idempotency_key
+                                                  idempotency_key,           prevents duplicate
+                                                  provider_message_id,       sends.
+                                                  status, sent_at
+
+                              suppressions        workspace_id, email or     Checked before
+                                                  domain, reason,            every send.
+                                                  created_at
+
+  Operations                  activities          workspace_id, actor_id,    Append-only audit
+                                                  entity, action, before,    log.
+                                                  after, at
+
+                              job_runs            id, workspace_id, kind,    Mirrors the job
+                                                  idempotency_key,           vendor's state for
+                                                  status, attempts,          reporting.
+                                                  cost_usd
+
+                              usage_events        id, workspace_id, kind,    Immutable ledger;
+                                                  quantity, unit_cost_usd,   plan limits are
+                                                  idempotency_key            computed from it.
+
+                              provider_configs    workspace_id, provider,    Keys stay in server-
+                                                  enabled, settings          side secret storage,
+                                                                             not here.
+
+
+
+Relationships
+       A workspace has many members, ICPs, campaigns, companies, contacts and email
+       accounts.
+       A campaign uses one pinned ICP version and holds many prospects
+       ( campaign_companies ); a company can appear in several campaigns.
+       A company has many evidence records, facts, contacts and research runs; a prospect
+       has many assessments, each with eight dimension rows.
+       A draft belongs to one prospect and one contact, has many versions, and at most one
+       approved version that can produce one email_message .
+
+
+Integrity rules
+   1. Row-level security on every tenant table: a row is visible only if the caller is a member
+       of its workspace. Server code also filters by workspace, so a policy mistake alone
+       cannot leak data.
+
+
+
+                                                                                            Page 10 of 23
+<PARSED TEXT FOR PAGE: 11 / 23>
+Prospecting SaaS: Architecture Review (Phase 0)
+
+
+
+
+   2. Child tables carry workspace_id and use composite foreign keys, so a row in
+       workspace A cannot reference a row in workspace B.
+   3. Unique keys that make retries safe: company domain per workspace, contact email
+       per workspace, idempotency_key on messages, usage events and job runs.
+   4. Assessments, draft versions, usage events and activities are append-only.
+   5. A send is blocked unless the contact is not suppressed, the draft version is approved,
+       and the recipient type is known.
+
+Decision for you: one companies table per workspace (my default) is safest, because no
+prospect research crosses tenants. The cost is that two customers researching the same
+company pay twice. A later, optional shared cache of purely public facts is possible, but it
+creates a privacy question I would not take on in the MVP.
+
+
+
+5. Providers: access, pricing, restrictions
+Start with one semantic search API for discovery, Hunter-style pay-per-use credits for
+contacts, and Gmail with gmail.send only. Do not resell Apollo data without a written
+agreement. Figures below come from vendor pages and docs surfaced in search as of
+2026-11-21; I read search excerpts, not every page in full, so confirm prices on the vendor
+pages before committing. Anything I did not research is listed at the end as unconfirmed.
+
+
+Confirmed from sources
+
+  Provider                      Role              What the sources say           Restriction or risk
+
+  Exa                           Discovery, page   Search $7 per 1,000            Pay-as-you-go with no
+                                contents          requests for up to 10          monthly minimum.
+                                                  results; $1 per 1,000 extra    Check terms on storing
+                                                  results; deep search $12 to    results.
+                                                  $15 per 1,000; page
+                                                  contents $1 per 1,000 pages;
+                                                  a free allowance of 1,000
+                                                  requests a month was listed
+                                                  on third-party snapshots
+                                                  (pricing docs).
+
+
+
+
+                                                                                                   Page 11 of 23
+<PARSED TEXT FOR PAGE: 12 / 23>
+Prospecting SaaS: Architecture Review (Phase 0)
+
+
+
+
+  Provider                      Role              What the sources say          Restriction or risk
+
+  Brave Search                  Discovery         Roughly $4 to $5 per 1,000    Storing results beyond
+  API                           (alternative)     queries on usage-based        the immediate use
+                                                  plans, with $5 of free        needs a plan that
+                                                  monthly credit per Brave's    explicitly grants
+                                                  page; third-party trackers    storage rights; Brave
+                                                  list the same range.          grants no rights to
+                                                                                third-party page
+                                                                                content. Affects
+                                                                                caching and evidence
+                                                                                storage.
+
+  Hunter                        Email finder,     Finder and domain search 1    Credits are per
+                                verifier          credit per found email;       account, so reselling at
+                                                  verifier 0.5 credit;          scale needs a data or
+                                                  enrichment 0.2 credit         enterprise plan.
+                                                  (credit rules). Plans: Free   Verification statuses
+                                                  50 credits a month, Starter   must still be mapped to
+                                                  2,000 credits ($49            the PRD's five-level
+                                                  monthly), Growth 10,000,      scheme.
+                                                  Scale 25,000 ($299
+                                                  monthly). API is included.
+
+  Apollo                        Contact           API terms bar using the API   Sources disagree on
+                                database          to compete with Apollo or     whether API access is
+                                                  to sublicense access to       on all plans or only
+                                                  third parties. Pricing page   custom plans. A multi-
+                                                  says plans are for internal   tenant product that
+                                                  use and that powering         fetches Apollo data on
+                                                  external products or          behalf of customers is
+                                                  sharing data with             probably out of bounds
+                                                  customers needs a             on standard terms.
+                                                  separate agreement            Confirm with Apollo
+                                                  (pricing).                    before any design
+                                                                                depends on it.
+
+
+
+
+                                                                                                  Page 12 of 23
+<PARSED TEXT FOR PAGE: 13 / 23>
+Prospecting SaaS: Architecture Review (Phase 0)
+
+
+
+
+  Provider                      Role                What the sources say          Restriction or risk
+
+  Gmail API                     Sending             gmail.send is a sensitive     Verification can take
+                                                    scope: OAuth verification,    several weeks; plan the
+                                                    no security assessment.       timeline. Reply
+                                                     gmail.readonly ,             detection requires a
+                                                     gmail.modify ,               restricted scope.
+                                                     gmail.compose and others
+                                                    are restricted: apps that
+                                                    store or transmit that data
+                                                    on servers need an annual
+                                                    third-party assessment
+                                                    (Google, Nylas guide).
+
+  LLM API                       Extraction,         Web search tool $10 per       Rate card changes with
+  (Anthropic)                   scoring, drafting   1,000 searches plus tokens    each model; re-check
+                                                    (pricing docs); Sonnet-       the current one. The AI
+                                                    class models were listed at   layer stays provider-
+                                                    $3 / $15 and Haiku-class at   neutral.
+                                                    $1 / $5 per million input /
+                                                    output tokens in the pages
+                                                    I saw. Batch processing is
+                                                    half price.
+
+
+
+Recommended starting set
+   1. Discovery: one search API (Exa first, because it returns page contents and is priced
+       per request without a monthly minimum), behind the adapter, plus CSV and URL
+       import.
+   2. Company facts: the company's own website and team page, fetched by your own
+       fetcher. This is the primary evidence source for small firms.
+   3. Contacts: public team-page names first; Hunter-style finder and verifier as a
+       metered, optional add-on. Offer "bring your own key" for providers whose terms
+       prohibit resale, such as Apollo, so the customer's licence covers their own use.
+   4. Sending: Gmail with gmail.send only. Start the Google verification process early,
+       since it runs on Google's timeline.
+   5. Do not scrape LinkedIn or other platforms whose terms prohibit it; the PRD already
+       says so.
+
+
+Not researched (unconfirmed)
+       Other search APIs (Tavily, Serper and similar) and other contact databases (People
+       Data Labs, Snov, Prospeo and similar): pricing, coverage and terms unchecked.
+
+
+                                                                                                    Page 13 of 23
+<PARSED TEXT FOR PAGE: 14 / 23>
+Prospecting SaaS: Architecture Review (Phase 0)
+
+
+
+
+       Standalone email-verification services and their accuracy.
+       Microsoft 365 / Outlook sending through Graph. Many B2B recipients and senders
+       use it, and the PRD defers it; whether Gmail-only is enough for the target segment is a
+       product decision (section 9).
+       Gmail daily sending limits: I did not verify current figures, so treat them as an open
+       item.
+       Coverage quality of any provider for your chosen countries. Test each on 50 known
+       companies before integrating.
+
+
+6. Operating cost estimate
+Planning figure: about $0.13 of variable cost per researched company, plus roughly $150
+a month fixed. That puts 10 active workspaces at around $400 a month all-in. These are
+assumption-based estimates built from the list prices in section 5, to be replaced by
+measured cost per job once the research pipeline exists.
+
+
+Assumptions per researched company
+
+  Step                                            Assumption                                      Cost (USD)
+
+  Search and page contents                        2 Exa search requests ($7 per 1,000) and 5      0.02
+                                                  pages of contents ($1 per 1,000 pages)
+
+  Extraction and                                  Small model, about 25k input and 3k output      0.04
+  classification                                  tokens at $1 / $5 per million
+
+  Qualification rationale                         Larger model, about 8k input and 1.5k output    0.05
+                                                  tokens at $3 / $15 per million
+
+  Research subtotal                                                                               0.11
+
+  Contact find and verify                         1.5 Hunter credits at about $0.0245 each        0.04 per
+                                                  (Starter: $49 for 2,000 credits), for the 25%   contact
+                                                  that qualify
+
+  Draft with two                                  Larger model, about 4k input and 0.6k           0.04 per draft
+  regenerations                                   output tokens, three times
+
+
+With a 25% qualification rate, the blended cost is $0.11 + 0.25 × ($0.04 + $0.04) = about
+$0.13 per researched company, or roughly $0.52 per qualified prospect with contact and
+draft. The 25% rate and token counts are guesses; the first real campaigns will replace
+them.
+
+
+
+
+                                                                                                             Page 14 of 23
+<PARSED TEXT FOR PAGE: 15 / 23>
+Prospecting SaaS: Architecture Review (Phase 0)
+
+
+
+
+Monthly scenarios
+
+  Scenario                                        Companies researched   Variable   Fixed   Total
+                                                  a month                cost       cost    (approx.)
+
+  Private beta: 3                                 300                    $39        $150    $190
+  workspaces × 100
+
+  Early paying: 10                                2,000                  $258       $150    $410
+  workspaces × 200
+
+  Growth: 50 workspaces                           15,000                 $1,935     $250    $2,200
+  × 300
+
+
+Fixed cost basis: Supabase Pro is $25 a month with a $10 compute credit and overage for
+larger compute or storage (Supabase pricing). Trigger.dev's Pro plan was listed at $50 a
+month and Inngest between $0 and $75 depending on source, so I used about $50.
+Hosting, error monitoring, transactional email and domains are not researched; I assumed
+$50 to $100 together. Treat the whole $150 as a placeholder.
+
+One-off costs to price before launch: Google's restricted-scope security assessment
+(only if reply sync is added) and legal review of the outreach and privacy terms. I do not
+have verified figures for either; get quotes.
+
+
+What moves the number
+       Pre-filter before deep research. A cheap homepage classification (a few
+       thousandths of a dollar) that rejects obvious non-fits can cut research cost per
+       qualified prospect by more than half.
+       Depth setting. Deep search is $12 to $15 per 1,000 requests against $7 for standard,
+       and multi-page crawling multiplies tokens. The PRD's "research depth" option should
+       map to a visible per-company price.
+       Batch processing for non-urgent extraction is listed at half price.
+       Pricing implication: at about $26 of variable cost per workspace a month (200
+       companies) plus about $15 of fixed cost per workspace at 10 workspaces, a plan under
+       roughly $80 to $100 a month leaves little margin once support and payment fees are
+       included. That is a hypothesis to test against willingness to pay, not a price
+       recommendation.
+
+
+
+
+                                                                                                   Page 15 of 23
+<PARSED TEXT FOR PAGE: 16 / 23>
+Prospecting SaaS: Architecture Review (Phase 0)
+
+
+
+
+7. Security and privacy risks
+The three risks that can end the business are cross-tenant data exposure, prompt
+injection from fetched web pages, and sender-reputation or legal harm caused by one
+customer's outreach. Everything else is standard SaaS hygiene. The legal items are risk
+flags for a lawyer to confirm, not legal advice.
+
+
+  #           Risk                                Likelihood /   Mitigation                Test
+                                                  impact
+
+  1           Cross-tenant data                   Medium /       Server-side               Automated tests
+              leak (a missing                     severe         authorization on every    that run every
+              workspace filter, a                                call; RLS plus            endpoint as user A
+              bad RLS policy, a                                  composite foreign         against workspace
+              cached response)                                   keys; no service-role     B's ids; run in CI.
+                                                                 database key in
+                                                                 request paths; per-
+                                                                 workspace cache
+                                                                 keys.
+
+  2           Prompt injection                    High / high    Fetched content is        A fixed set of
+              from retrieved pages,                              passed as quoted          hostile pages in the
+              PDFs or search                                     data, never as            test suite;
+              snippets that try to                               instructions; the         assertions that
+              steer the model or                                 model has no tools        outputs never
+              trigger actions                                    that send, delete or      contain actions or
+                                                                 change settings;          links taken from
+                                                                 structured output         page text.
+                                                                 only; every outbound
+                                                                 action needs a human
+                                                                 click.
+
+  3           Fabricated or mis-                  High / high    Excerpt-in-page           Regression set with
+              attributed claims                                  check (section 3);        known-false claims;
+              reaching a                                         unverified claims         weekly human
+              customer's email                                   never appear as fact in   audit of a sample.
+                                                                 drafts; the draft
+                                                                 shows which evidence
+                                                                 each sentence uses.
+
+
+
+
+                                                                                                         Page 16 of 23
+<PARSED TEXT FOR PAGE: 17 / 23>
+Prospecting SaaS: Architecture Review (Phase 0)
+
+
+
+
+  #           Risk                                Likelihood /   Mitigation                Test
+                                                  impact
+
+  4           SSRF and abusive                    Medium /       Fetch from an isolated    Unit tests for
+              fetching (users or                  severe         worker, block private     blocked ranges and
+              pages pointing the                                 and metadata IP           redirect tricks.
+              fetcher at internal                                ranges, follow limited
+              addresses)                                         redirects, cap size and
+                                                                 time, respect
+                                                                 robots.txt.
+
+  5           OAuth token theft                   Low /          Envelope encryption       Log scanning for
+              (Gmail refresh                      severe         with a managed key        token patterns;
+              tokens)                                            service; tokens never     key-rotation drill.
+                                                                 sent to the browser or
+                                                                 written to logs; least
+                                                                 scope ( gmail.send );
+                                                                 revoke on disconnect.
+
+  6           Deliverability                      High / high    Send caps per             Simulated bounce
+              damage and spam                                    account and per day,      spikes trigger the
+              abuse by a customer                                domain authentication     breaker.
+                                                                 checks (SPF, DKIM,
+                                                                 DMARC) before
+                                                                 enabling sending,
+                                                                 bounce-rate circuit
+                                                                 breaker, suppression
+                                                                 list, unsubscribe in
+                                                                 every message, tenant
+                                                                 suspension.
+
+  7           Anti-spam and                       Medium /       Store recipient type      Legal review of the
+              privacy law (UK                     high           and a lawful-basis        flows before public
+              PECR and GDPR;                                     note per contact;         launch.
+              CAN-SPAM in the US)                                block sends to
+                                                                 unknown recipient
+                                                                 types by default;
+                                                                 honour opt-outs
+                                                                 globally per
+                                                                 workspace; provide
+                                                                 data export and
+                                                                 deletion; a record of
+                                                                 processing.
+
+
+
+
+                                                                                                          Page 17 of 23
+<PARSED TEXT FOR PAGE: 18 / 23>
+Prospecting SaaS: Architecture Review (Phase 0)
+
+
+
+
+  #           Risk                                Likelihood /   Mitigation                Test
+                                                  impact
+
+  8           Personal data about                 Certain /      Collect only business-    Deletion request
+              third parties                       medium         contact fields; show      end-to-end test.
+              (prospects have not                                source for each;
+              signed up)                                         honour deletion and
+                                                                 objection requests
+                                                                 quickly; retention
+                                                                 limits; no private
+                                                                 personal contact
+                                                                 details; no scraping of
+                                                                 platforms that
+                                                                 prohibit it.
+
+  9           Provider terms                      Medium /       Per-provider flags on     Terms review
+              breach (storing                     high           what may be stored or     checklist per
+              search results,                                    shown; bring-your-        adapter.
+              reselling contact                                  own-key where terms
+              data)                                              require it (section 5).
+
+
+  10          Duplicate or runaway                Medium /       Idempotency keys on       Replay a job twice;
+              jobs (double sends,                 high           jobs and sends;           assert one send.
+              cost explosions)                                   unique constraint on
+                                                                 messages; per-
+                                                                 campaign cost caps;
+                                                                 usage ledger.
+
+  11          Secrets in code or                  Medium /       Secret manager, no        Scanner in CI; a
+              logs                                high           keys in the repository,   seeded fake secret
+                                                                 log redaction, secret-    must be caught.
+                                                                 scanning in CI.
+
+  12          Insider and support                 Low / high     Role-based admin          Audit-log coverage
+              access                                             access, audit trail on    test.
+                                                                 every support view of
+                                                                 customer data.
+
+
+Open items: hosting region and data-processing terms for EU and UK customers;
+retention periods per data type; whether the company acts as processor or controller for
+prospect data (it is likely a processor for customers' campaigns but a controller for its
+own evidence cache, if one is ever built).
+
+
+
+
+                                                                                                           Page 18 of 23
+<PARSED TEXT FOR PAGE: 19 / 23>
+Prospecting SaaS: Architecture Review (Phase 0)
+
+
+
+
+8. Phased implementation plan
+I would keep your phases 0 to 7 and add one: a thin end-to-end slice after the
+foundation (1b), so the core promise is tested before anything else is built around it.
+Each phase below ends at a review gate; none is complete until its acceptance tests pass.
+Numeric thresholds marked proposed are my suggestions for you to set.
+
+
+
+
+roadmap · 8 phases, one added slice
+
+The slice imports about 20 company URLs, researches and scores them, and drafts (but
+does not send) messages. If its evidence and scores are not good enough, no later phase
+fixes that.
+
+
+  Phase                                Scope                               Acceptance criteria
+
+  0 Validate                           Approve this review; run provider   Coverage test on 50 known
+                                       coverage tests; start Google        companies per target country for
+                                       OAuth verification; scope legal     at least two discovery or data
+                                       review                              providers is recorded; measured
+                                                                           cost per company replaces the
+                                                                           estimates in section 6; the wedge
+                                                                           segment is chosen.
+
+  1 Foundation                         Repository, CI, auth, workspaces,   Sign-up, login, invite and role
+                                       roles, schema, design system,       changes work; the tenancy test
+                                       settings                            suite (user A against workspace
+                                                                           B, every endpoint) passes in CI;
+                                                                           migrations apply cleanly from
+                                                                           empty; secret scanning is on.
+
+
+
+
+                                                                                                      Page 19 of 23
+<PARSED TEXT FOR PAGE: 20 / 23>
+Prospecting SaaS: Architecture Review (Phase 0)
+
+
+
+
+  Phase                                Scope                                Acceptance criteria
+
+  1b Thin slice                        CSV or URL import; fetch, extract,   Every claim shown links to a
+                                       store evidence; score; draft         source and passes the excerpt-
+                                       without sending                      in-page check; a reviewer labels
+                                                                            the 20 results; claim accuracy at
+                                                                            or above 95% (proposed); no
+                                                                            draft sentence uses an unverified
+                                                                            claim as fact.
+
+  2 Campaigns                          ICP builder, campaign builder,       ICP and campaign schemas
+                                       exclusions, processing states        validate and version; campaigns
+                                                                            pin an ICP version; exclusions are
+                                                                            applied in tests; pause and
+                                                                            resume are safe to repeat.
+
+  3 Discovery and                      Search adapter, discovery job,       A known set of duplicate and
+  research                             deduplication, research pipeline,    near-duplicate domains merges
+                                       failure handling                     with no false merges (proposed:
+                                                                            98% of true duplicates caught);
+                                                                            replaying a job creates no
+                                                                            duplicates; a provider outage
+                                                                            gives partial results with a clear
+                                                                            status; cost per company is
+                                                                            recorded on every run.
+
+  4 Scoring and                        Scoring engine, review and           Same inputs give the same score
+  contacts                             override, decision-maker             (snapshot tests); missing
+                                       research, contact status             information never raises a score;
+                                                                            overrides are audited; no email is
+                                                                            marked verified without a verifier
+                                                                            or provider confirmation;
+                                                                            decision-maker identification
+                                                                            rate is measured.
+
+  5 Outreach                           Draft editor, approval, Gmail        Only approved versions can be
+                                       OAuth, single send, history          sent; a double click or job replay
+                                                                            sends once; suppression and
+                                                                            unsubscribe are honoured; send
+                                                                            caps are enforced; delivery
+                                                                            status reports only what the API
+                                                                            confirms; no open tracking is
+                                                                            claimed.
+
+
+
+
+                                                                                                         Page 20 of 23
+<PARSED TEXT FOR PAGE: 21 / 23>
+Prospecting SaaS: Architecture Review (Phase 0)
+
+
+
+
+  Phase                                Scope                                  Acceptance criteria
+
+  6 CRM and usage                      Pipeline, activity history, usage      Usage ledger totals reconcile to
+                                       ledger, limits, overview metrics       recorded job costs; limits block
+                                                                              new expensive jobs; an empty
+                                                                              workspace shows zeros, not
+                                                                              demo numbers; CSV export is
+                                                                              logged.
+
+  7 Production                         Security review, load and failure      An independent security review
+  readiness                            testing, monitoring, retention,        has no open high findings; a
+                                       compliance flows, backups              backup restore drill succeeds;
+                                                                              rate limits and alerts are tested;
+                                                                              deletion and export work end to
+                                                                              end; runbooks exist for the job
+                                                                              layer and for email incidents.
+
+
+External lead times to start early: Google OAuth verification (weeks, per Google and
+Nylas guidance), legal review of outreach flows, and any provider agreements.
+
+
+9. Unresolved product decisions
+Four decisions block the start of build: the launch wedge, the discovery data source,
+the legal posture for UK and EU recipients, and whether reply tracking is in the MVP.
+The rest can wait until the phase that needs them.
+
+
+  #           Decision                            Options                  My recommendation             Needed
+                                                                                                         by
+
+  1           Launch wedge:                       One segment (for         One segment and two or        Phase 0
+              which segment and                   example small            three countries;
+              which countries                     software and design      configurability stays
+              first                               agencies selling to      underneath
+                                                  agencies or SaaS
+                                                  firms) vs. all B2B
+                                                  service providers
+
+  2           Primary discovery                   Search API plus the      Search API plus own-site      Phase 0
+              data source                         company's own site       evidence, with CSV
+                                                  vs. a licensed           import; add licensed data
+                                                  company database         only if coverage tests fail
+
+
+
+
+                                                                                                           Page 21 of 23
+<PARSED TEXT FOR PAGE: 22 / 23>
+Prospecting SaaS: Architecture Review (Phase 0)
+
+
+
+
+  #           Decision                            Options                 My recommendation            Needed
+                                                                                                       by
+
+  3           Legal posture for                   Allow from day one      Block sends where            Phase 0
+              UK and EU                           vs. launch in markets   recipient type is
+              recipients                          with simpler rules      unknown; take legal
+                                                  first vs. restrict to   advice before inviting
+                                                  corporate recipients    users who email UK or EU
+                                                                          recipients
+
+  4           Reply tracking                      Manual marking in       Manual in the MVP;           Phase 0
+                                                  the MVP vs. Gmail       revisit once users ask for
+                                                  read access with an     it and revenue funds the
+                                                  annual security         assessment
+                                                  assessment
+
+  5           Email providers                     Gmail only vs. Gmail    Gmail first as the PRD       Phase 0
+                                                  plus Microsoft 365      says, but check what
+                                                                          share of your target
+                                                                          users send from
+                                                                          Microsoft 365
+
+  6           Company data                        Per-workspace           Per-workspace for the        Phase 1
+              model                               companies vs. shared    MVP
+                                                  cache of public facts
+
+  7           Hosting and data                    US, EU or UK; one       One region chosen to         Phase 1
+              region                              region or per           match the first
+                                                  workspace               customers' laws; decide
+                                                                          with decision 3
+
+  8           Database and job                    Supabase vs. other      Supabase Pro and a one-      Phase 1
+              platform                            managed Postgres;       day spike on the two job
+                                                  Inngest vs.             platforms
+                                                  Trigger.dev
+
+  9           Quality bars                        Claim accuracy,         Start with the proposed      Phase 1b
+                                                  duplicate-merge rate,   thresholds in section 8
+                                                  qualification pass      and adjust after the thin
+                                                  rate                    slice
+
+  10          Cost control and                    Hard per-workspace      Hard caps plus visible       Phase 3
+              pricing shape                       caps vs. credit packs   per-company cost at the
+                                                  vs. bring-your-own-     chosen depth; price after
+                                                  key for some            measuring real cost
+                                                  providers
+
+
+
+
+                                                                                                         Page 22 of 23
+<PARSED TEXT FOR PAGE: 23 / 23>
+Prospecting SaaS: Architecture Review (Phase 0)
+
+
+
+
+  #           Decision                            Options                 My recommendation          Needed
+                                                                                                     by
+
+  11          Tracking opens and                  None vs. optional       None in the MVP, in line   Phase 5
+              clicks                              with a clear accuracy   with the PRD
+                                                  warning
+
+
+What I need from you to proceed: answers or preferences on decisions 1 to 5, and
+approval of the architecture (or the changes you want). I will not start Phase 1 until you
+confirm.
+
+
+
+
+                                                                                                       Page 23 of 23
