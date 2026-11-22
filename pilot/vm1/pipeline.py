@@ -21,7 +21,7 @@ from .evidence import (PageSnapshot, apply_discovery_record, extract_evidence, v
                        verify_excerpt_parts)
 from .fetch import PoliteFetcher
 from .guard import SpendLedger, credentials_present
-from .pageselect import canonical_key, plan_selection, rank_candidates
+from .pageselect import canonical_key, plan_selection, project_path, rank_candidates
 from .prequalify import coverage, order_pool
 from .htmlparse import PageData, parse_html
 from .people import find_decision_makers
@@ -102,6 +102,43 @@ def select(pool: list[Candidate], max_candidates: int, seed: str) -> list[Candid
     return select_with_reasons(pool, max_candidates, seed)[0]
 
 
+def fetch_secondary_pages(fetcher, home_url, ranked, limit, page_policy):
+    """Yield actual selections, responses and parses. A project index may spend one remaining slot."""
+    plan = plan_selection(ranked, limit, page_policy)
+    known = {canonical_key(s.url): s for s in ranked}
+    seen = {canonical_key(home_url)}
+    used = 0
+    while plan and used < limit:
+        sel = plan.pop(0)
+        key = canonical_key(sel.url)
+        seen.add(key)
+        used += 1
+        sel.selected, sel.slot = True, used
+        res = fetcher.fetch(sel.url)
+        url = res.final_url or sel.url
+        page = parse_html(res.text or "", url) if res.ok else None
+        seen.add(canonical_key(url))
+        yield sel, res, page
+        if (page is None or used >= limit or sel.category != "project_index" or
+                project_path(urlsplit(url).path) != "index"):
+            continue
+        children = rank_candidates(page.links, home_url, page_policy)
+        child = next((s for s in children if s.category == "project_detail" and canonical_key(s.url) not in seen), None)
+        if child is None:
+            continue
+        key = canonical_key(child.url)
+        detail = known.get(key)
+        if detail is None:
+            detail = child
+            known[key] = child
+            ranked.append(detail)
+        detail.reason = f"{child.reason}, linked from {url}"
+        plan = [detail] + [s for s in plan if s is not detail]
+        if used + len(plan) > limit:
+            displaced = plan.pop()
+            displaced.selected, displaced.slot = False, None
+
+
 def research_company(cand: Candidate, fetcher: PoliteFetcher,
                      icp: dict | IcpPolicy, max_secondary: int) -> dict:
     policy = load_policy(icp)
@@ -131,24 +168,14 @@ def research_company(cand: Candidate, fetcher: PoliteFetcher,
         snaps.append(PageSnapshot(url=url, fetched_at=res.fetched_at, page=page, is_homepage=True))
         pages_by_url[url] = page
         ranked_sel = rank_candidates(page.links, url, policy.page_selection)
-        chosen = plan_selection(ranked_sel, max_secondary, policy.page_selection)
-        picks = [c.url for c in chosen]
-        by_url = {c.url: c for c in chosen}
-        rec["secondary_links_found"] = len(picks)
-        # Diagnostics (Issue #3/#4): which eligible pages existed, why each was or was not chosen, and what each
-        # fetched page parsed into, so "evidence missing from fetched pages" vs "page never fetched" vs "page
-        # fetched but empty (e.g. JS-rendered)" can be told apart from the run artifacts alone.
-        rec["secondary_candidates"] = [c.to_dict() for c in ranked_sel[:15]]
         rec["homepage_text_blocks"] = len(page.blocks)
         fetched_keys = {canonical_key(url): url}  # duplicate FINAL destinations (redirects) are not double-counted
-        for sec in picks:
-            sres = fetcher.fetch(sec)
-            sel = by_url[sec]
+        for sel, sres, spage in fetch_secondary_pages(fetcher, url, ranked_sel, max_secondary, policy.page_selection):
+            sec = sel.url
             entry = {"url": sec, "ok": sres.ok, "error": sres.error, "status": sres.status,
                      "category": sel.category, "reason": sel.reason, "slot": sel.slot}
-            if sres.ok:
+            if spage is not None:
                 surl = sres.final_url or sec
-                spage = parse_html(sres.text or "", surl)
                 entry.update(final_url=surl, text_blocks=len(spage.blocks), text_chars=len(sres.text or ""),
                              links=len(spage.links))
                 dup = fetched_keys.get(canonical_key(surl))
@@ -159,6 +186,10 @@ def research_company(cand: Candidate, fetcher: PoliteFetcher,
                     snaps.append(PageSnapshot(url=surl, fetched_at=sres.fetched_at, page=spage))
                     pages_by_url[surl] = spage
             rec["secondary"].append(entry)
+        rec["secondary_links_found"] = len(rec["secondary"])
+        # Keep every actual selection visible even when the index supplied a new link after the homepage.
+        visible = ranked_sel[:15] + [s for s in ranked_sel[15:] if s.selected]
+        rec["secondary_candidates"] = [s.to_dict() for s in visible]
 
     evidence = extract_evidence(key, snaps, company_name=cand.name)
     evidence = apply_discovery_record(key, cand, evidence)

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "id": "frontend-studio-worldwide-v1",
-  "policy_version": "1.0.0",
+  "policy_version": "1.1.0",
   "name": "Frontend studio -> independent software/product studios worldwide, excluding India",
   "description": "Independent software development and product studios worldwide, excluding India-based firms, roughly 5–50 staff, with relevant frontend delivery work.",
   "seller": "Hypothetical freelance/boutique React/Next.js frontend development studio (dashboards, client portals, SaaS interfaces). Not a real business.",
@@ -43,6 +43,12 @@
         "strength": "weak",
         "points": 12,
         "rule": "entity_type: firm's own consulting/client engagements (weak identity)"
+      },
+      {
+        "claim": "capability:client_application_delivery",
+        "strength": "weak",
+        "points": 0,
+        "rule": "first-party account of delivering a client application"
       }
     ],
     "identity_missing_unknown": "entity_type: no self-referential studio/agency description found",
@@ -82,13 +88,13 @@
     ],
     "capability_cap": 25,
     "min_capabilities": 1,
-    "capability_noun": "services",
-    "capability_rule_prefix": "service: ",
-    "capabilities_missing_unknown": "services: none of the target service terms found",
-    "capabilities_missing_reason": "no target service described as offered to clients",
-    "qualified_reason": "self-described service provider offering target services to clients",
+    "capability_noun": "capabilities",
+    "capability_rule_prefix": "capability: ",
+    "capabilities_missing_unknown": "no supported target frontend service found",
+    "capabilities_missing_reason": "no target service evidenced as an offering",
+    "qualified_reason": "client-service identity or delivery evidenced alongside a separately offered target service",
     "mixed_identity_template": "mixed identity: agency wording alongside vendor/enterprise signals {values}",
-    "gate_cap_note": "US location, technology mentions, size and named people cannot promote an unverified agency identity"
+    "gate_cap_note": "Location, project evidence, size and named people alone cannot establish studio identity"
   },
   "screens": [
     {
@@ -120,9 +126,9 @@
   ],
   "bonuses": [
     {
-      "claim": "signal:client_work",
-      "points": 5,
-      "rule": "signal: client-work wording (not purchase intent)",
+      "claim": "capability:client_application_delivery",
+      "points": 15,
+      "rule": "documented client application delivery",
       "requires_target_type": true
     }
   ],
@@ -239,9 +245,10 @@
     "extra_segments": {},
     "slot_order": [
       "service",
+      "people",
+      "project",
+      "service",
       "about",
-      "service",
-      "service",
       "team",
       "service_other",
       "work",

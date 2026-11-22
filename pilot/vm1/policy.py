@@ -30,7 +30,7 @@ SCHEMA_VERSION = 1
 SUPPORTED_SCHEMA_VERSIONS = (1,)
 BASELINE_PATH = Path(__file__).resolve().parent.parent / "icp" / "frontend-studio.json"
 ROLE_CLASSES = ("founder_ceo", "cto_eng", "other_leader")
-PAGE_POOLS = ("service", "about", "service_other", "team", "work", "contact", "detail")
+PAGE_POOLS = ("service", "about", "service_other", "team", "work", "contact", "detail", "project", "people")
 SEGMENT_CATEGORIES = ("service_hub", "about", "team", "work", "contact")
 _ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{1,63}$")
 _SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+$")
@@ -301,7 +301,12 @@ def _identity(c: _Check, d, path) -> IdentityRule:
     strength = d.get("strength")
     if strength not in ("strong", "weak"):
         c.err(f"{path}.strength", "must be 'strong' or 'weak'")
-    return IdentityRule(c.claim(d.get("claim"), f"{path}.claim", ("entity_type:", "company_type:")), strength or "weak",
+    # Past client delivery can support a weak services identity when separately evidenced
+    # capabilities are required. It cannot shield an enterprise or a product vendor.
+    prefixes = ("entity_type:", "company_type:")
+    if strength == "weak" and d.get("claim") == "capability:client_application_delivery":
+        prefixes += ("capability:",)
+    return IdentityRule(c.claim(d.get("claim"), f"{path}.claim", prefixes), strength or "weak",
                         c.integer(d, "points", path, -50, 100), c.text(d, "rule", path, max_len=200),
                         c.integer(d, "min_distinct_values", path, 1, 10, 1))
 
@@ -332,6 +337,9 @@ def _parse_target(c: _Check, d, path) -> TargetType:
         c.err(f"{path}.capabilities", "two capabilities use the same claim type")
     cap_total = c.integer(d, "capability_cap", path, 0, 100)
     min_caps = c.integer(d, "min_capabilities", path, 0, 40)
+    if any(i.claim == "capability:client_application_delivery" for i in ident):
+        if min_caps == 0 or "capability:client_application_delivery" in claims:
+            c.err(f"{path}.capabilities", "a project-based identity requires a separate qualifying capability")
     if min_caps > len(caps):
         c.err(f"{path}.min_capabilities", "exceeds the number of capabilities defined")
     t = lambda k, m=300: c.text(d, k, path, max_len=m)  # noqa: E731

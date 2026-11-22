@@ -252,9 +252,9 @@ def capture(candidates: list[Candidate], fetcher: PoliteFetcher, store: Snapshot
             label: str = "", policy: IcpPolicy | None = None) -> dict:
     """Fetch homepage + the top-ranked eligible secondary pages (a SUPERSET of what the normal 4-page budget
     fetches, so selection changes can be replayed) through the recording fetcher. Produces snapshots, no findings."""
-    from .pageselect import canonical_key, plan_selection, rank_candidates
+    from .pageselect import canonical_key, rank_candidates
     from .htmlparse import parse_html
-    from .pipeline import homepage_url
+    from .pipeline import fetch_secondary_pages, homepage_url
 
     started = utc_now_iso()
     companies = []
@@ -281,19 +281,23 @@ def capture(candidates: list[Candidate], fetcher: PoliteFetcher, store: Snapshot
             page = parse_html(res.text or "", url)
             page_policy = policy.page_selection if policy is not None else None
             ranked = rank_candidates(page.links, url, page_policy)
-            planned = plan_selection(ranked, 4, page_policy)
-            order = [s.url for s in planned] + [s.url for s in ranked if s.url not in {p.url for p in planned}]
+            # Capture the normal route first, including any detail first linked by a project index.
             seen = {canonical_key(url)}
-            for u in order:
+            for sel, response, _ in fetch_secondary_pages(fetcher, url, ranked, min(4, capture_pages), page_policy):
+                row["pages"].append(sel.url)
+                seen.update((canonical_key(sel.url), canonical_key(response.final_url or sel.url)))
+                if not response.ok:
+                    row["page_errors"][sel.url] = response.error
+            for sel in ranked:
                 if len(row["pages"]) >= capture_pages:
                     break
-                if canonical_key(u) in seen:
+                if canonical_key(sel.url) in seen:
                     continue
-                seen.add(canonical_key(u))
-                r = fetcher.fetch(u)
-                row["pages"].append(u)
-                if not r.ok:
-                    row["page_errors"][u] = r.error
+                response = fetcher.fetch(sel.url)
+                row["pages"].append(sel.url)
+                seen.update((canonical_key(sel.url), canonical_key(response.final_url or sel.url)))
+                if not response.ok:
+                    row["page_errors"][sel.url] = response.error
         companies.append(row)
     fetcher.resolver = real_resolver
     manifest = {

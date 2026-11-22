@@ -30,6 +30,7 @@ from urllib.parse import unquote, urlsplit
 from functools import lru_cache
 
 from .canon import registrable_domain
+from .projects import project_terms
 from .policy import PageSelectionConfig, baseline_policy
 
 _ASSET_RE = re.compile(r"\.(pdf|jpe?g|png|gif|svg|webp|zip|mp4|mov|docx?|xlsx?|pptx?)$", re.I)
@@ -77,11 +78,12 @@ TEXT_CATEGORY = {
 
 # category -> priority (lower = earlier); used for the ranked candidate list and fill order
 PRIORITY = {"service_icp": 0, "service_hub": 1, "about": 2, "team": 3, "service_other": 4, "work": 5,
-            "contact": 6, "detail": 7}
+            "project_index": 5, "project_detail": 5, "contact": 6, "detail": 7}
 # The slot plan (order in which page pools are served) is policy-configurable; baseline: service, about, service,
 # service, team, service_other, work, contact, detail. About/identity is guaranteed an early slot by that baseline.
 POOL_OF = {"service_icp": "service", "service_hub": "service", "service_other": "service_other", "about": "about",
-           "team": "team", "work": "work", "contact": "contact", "detail": "detail"}
+           "team": "team", "work": "work", "contact": "contact", "detail": "detail",
+           "project_index": "project", "project_detail": "project"}
 
 
 @dataclass(frozen=True)
@@ -191,6 +193,28 @@ def _segments(path: str) -> list[str]:
     return segs
 
 
+_COLLECTIONS = {"case-study", "case-studies", "work", "our-work", "project", "projects", "our-projects",
+                "portfolio", "showcase", "success-stories"}
+_FILTERS = {"page", "category", "tag", "filter", "industry", "industries", "archive", "all"}
+
+
+def project_path(path: str) -> str | None:
+    """Recognize a portfolio index or a case detail in an explicit collection URL."""
+    parts = _segments(path)
+    if (not parts or _ASSET_RE.search(path) or any(ch.isspace() for ch in path)
+            or any(s in EDITORIAL_SEGS or s in EXCLUDED_SEGS for s in parts)):
+        return None
+    while len(parts) > 1 and parts[0] in _COLLECTIONS and parts[1] in _COLLECTIONS:
+        parts = parts[1:]
+    if parts[0] not in _COLLECTIONS:
+        return None
+    if len(parts) == 1:
+        return "index"
+    if len(parts) == 2 and parts[1] not in _FILTERS | CONTACT_SEGS and not parts[1].isdigit():
+        return "detail"
+    return None
+
+
 def _article_like(segs: list[str]) -> bool:
     if any(re.fullmatch(r"(?:19|20)\d\d", s) for s in segs):
         return True  # dated URL
@@ -209,7 +233,7 @@ def classify_link(href: str, text: str, home_host: str = "",
     segs = _segments(sp.path)
     if not segs or len(segs) > 4:
         return None
-    if _ASSET_RE.search(sp.path):
+    if _ASSET_RE.search(sp.path) or any(ch.isspace() for ch in sp.path):
         return None
     for s in segs:
         if s in EDITORIAL_SEGS or s in EXCLUDED_SEGS:
@@ -217,6 +241,14 @@ def classify_link(href: str, text: str, home_host: str = "",
     first = segs[0]
     toks = {t for s in segs for t in s.split("-") if t}
     icp = sorted(toks & r.tokens)
+
+    if "project" in r.slot_order:
+        project = project_path(sp.path)
+        if project == "index":
+            return "project_index", "first-party project collection", []
+        if project == "detail":
+            hits = project_terms(f"{segs[-1].replace('-', ' ')} {text}")
+            return "project_detail", "project in first-party collection" + (f" with {hits}" if hits else ""), hits
 
     if first in r.hub:
         if len(segs) == 1:
@@ -275,10 +307,18 @@ def rank_candidates(links: list[tuple[str, str]], home_url: str,
         prev = best.get(key)
         if prev is None:
             best[key] = (sel, idx)
-        elif sel.priority < prev[0].priority:
+        elif (sel.priority < prev[0].priority or
+              (cat == "project_detail" and len(icp) > len(prev[0].icp_terms))):
             sel.url = prev[0].url  # better classification, but keep the URL form first linked
             best[key] = (sel, prev[1])
-    rows = sorted(best.values(), key=lambda r: (r[0].priority, -len(r[0].icp_terms), r[1]))
+    def ranking(row):
+        sel, order = row
+        # Explicit web frontend work is a closer match than an unspecified business application.
+        frontend = sel.category == "project_detail" and any(
+            re.search(r"web[- ]app|front[- ]?end|portal|dashboard", t) for t in sel.icp_terms)
+        return sel.priority, not frontend, -len(sel.icp_terms), order
+
+    rows = sorted(best.values(), key=ranking)
     return [s for s, _ in rows]
 
 
@@ -290,6 +330,9 @@ def plan_selection(ranked: list[Selection], limit: int, ps: PageSelectionConfig 
         pools.setdefault(POOL_OF[s.category], []).append(s)
     # service pool: hub first, then ICP detail pages (already ordered by ICP-hit count)
     pools["service"] = sorted(pools.get("service", []), key=lambda s: (s.category != "service_hub",))
+    # Prefer a directly linked application case. For opaque links, inspect the collection first.
+    pools["project"] = sorted(pools.get("project", []),
+                              key=lambda s: (not s.icp_terms, s.category != "project_index"))[:1]
     chosen: list[Selection] = []
     i = 0
     while len(chosen) < limit and any(pools.values()):
@@ -297,6 +340,8 @@ def plan_selection(ranked: list[Selection], limit: int, ps: PageSelectionConfig 
         i += 1
         if i > len(slot_order) * (limit + 2):
             break
+        if pool == "people":
+            pool = "team" if pools.get("team") else "about"
         if pools.get(pool):
             s = pools[pool].pop(0)
             s.selected, s.slot = True, len(chosen) + 1

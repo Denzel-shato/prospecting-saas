@@ -19,6 +19,7 @@ import hashlib
 import re
 from dataclasses import asdict, dataclass, field
 from typing import Iterable, Iterator
+from urllib.parse import urlsplit
 
 from .context import (NON_OFFERING_KINDS, NON_SELF_KINDS, THIRD_PARTY_CTX, UNRELIABLE_CTX,
                       block_is_third_party, page_kind, sentence_bounds)
@@ -27,6 +28,8 @@ from .facts import (AI_CONSULTANCY_RE, CUSTOMER_INTAKE, ECOMMERCE_PLATFORM, EMAI
                     LOYALTY_SUBSCRIPTION, MARKETING_AGENCY_RE, SERVICE_LINE_PATTERNS, STOREFRONT_SIGNALS)
 from . import geo
 from .htmlparse import PageData, norm_ws
+from .pageselect import project_path
+from .projects import project_excerpts
 
 SOURCE_SUPPORTED = "source_supported"
 CORROBORATED = "corroborated"
@@ -643,6 +646,10 @@ def _negated(text: str, m: re.Match) -> bool:
     return NEGATION_RE.search(text[lo:m.start()][-40:]) is not None
 
 
+_CLIENT_LIST = re.compile(r"\b(?:our (?:clients?|customers?) (?:include|range from|are)|"
+                          r"we (?:serve|work with)|(?:projects?|services?) for)\b", re.I)
+
+
 def _signal_evidence(company_key: str, snaps: list[PageSnapshot], claim: str,
                      table: dict[str, tuple[re.Pattern, int]], note: str) -> list[Evidence]:
     out: list[Evidence] = []
@@ -653,6 +660,10 @@ def _signal_evidence(company_key: str, snaps: list[PageSnapshot], claim: str,
                 if tp or kind in ("editorial", "docs") or len(text) > maxlen:
                     continue
                 m = next((x for x in pat.finditer(text) if not _negated(text, x)), None)
+                if m and claim == "company_type:enterprise_signal":
+                    lo, _ = sentence_bounds(text, m.start(), m.end())
+                    if _CLIENT_LIST.search(text[lo:m.start()]):
+                        continue
                 if m:
                     out.append(_ev(company_key, claim, cat, snap, text, m, note))
                     done = True
@@ -746,18 +757,21 @@ def _catalog_facts(company_key: str, snaps: list[PageSnapshot]) -> list[Evidence
 def extract_evidence(company_key: str, snaps: list[PageSnapshot],
                      company_name: str | None = None) -> list[Evidence]:
     out: list[Evidence] = []
+    # Work pages describe customers and customer products. They must not supply the
+    # provider's identity, location, size, vendor signals, or offered services.
+    company_pages = [s for s in snaps if page_kind(s.url, s.is_homepage) != "work"]
 
     # company identity / type signals first so they can never be truncated away
-    out += _identity_evidence(company_key, snaps)
-    out += _signal_evidence(company_key, snaps, "company_type:saas_vendor_signal", VENDOR_SIGNALS,
+    out += _identity_evidence(company_key, company_pages)
+    out += _signal_evidence(company_key, company_pages, "company_type:saas_vendor_signal", VENDOR_SIGNALS,
                             "product-vendor wording (trial/demo/account/platform/docs); weight 0 alone")
-    out += _signal_evidence(company_key, snaps, "company_type:enterprise_signal", ENTERPRISE_SIGNALS,
+    out += _signal_evidence(company_key, company_pages, "company_type:enterprise_signal", ENTERPRISE_SIGNALS,
                             "large/listed-corporation wording; weight 0 alone")
 
     # services: only wording where the company offers the service to clients (see _offering)
     mentions: list[Evidence] = []
     for tag, pats in SERVICE_PATTERNS.items():
-        offered, mention = _service_evidence(company_key, snaps, tag, pats)
+        offered, mention = _service_evidence(company_key, company_pages, tag, pats)
         if offered:
             out.append(offered)
         elif mention:
@@ -774,19 +788,19 @@ def extract_evidence(company_key: str, snaps: list[PageSnapshot],
                     mentions = [mn for mn in mentions if mn.claim_type != f"mention:{tag}"]
 
     # location
-    hit = _find(snaps, [US_ADDRESS_RE])
+    hit = _find(company_pages, [US_ADDRESS_RE])
     if hit:
         snap, text, m = hit
         out.append(_ev(company_key, "location:us", _state_value(m.group(1)), snap, text, m,
                        "US street/city-state-ZIP pattern on first-party page"))
     else:
-        hit = _find(snaps, [US_BASED_RE])
+        hit = _find(company_pages, [US_BASED_RE])
         if hit:
             snap, text, m = hit
             out.append(_ev(company_key, "location:us", _state_value(m.group(1) or m.group(2)), snap, text, m,
                            "'based/located in City, State' statement"))
         else:
-            for snap in snaps:
+            for snap in company_pages:
                 found = False
                 for text in _texts(snap):
                     m = US_COUNTRY_RE.search(text)
@@ -797,7 +811,7 @@ def extract_evidence(company_key: str, snaps: list[PageSnapshot],
                         break
                 if found:
                     break
-    hit = _find(snaps, [NON_US_RE, UK_POSTCODE_RE, CA_POSTAL_RE])
+    hit = _find(company_pages, [NON_US_RE, UK_POSTCODE_RE, CA_POSTAL_RE])
     if hit:
         snap, text, m = hit
         value = m.group(1) if m.groups() else m.group(0)
@@ -807,7 +821,7 @@ def extract_evidence(company_key: str, snaps: list[PageSnapshot],
     if not any(e.claim_type == "location:non_us" for e in out):
         out.extend(_generalized_location(company_key, snaps, {e.claim_type for e in out}))
 
-    for snap in snaps:
+    for snap in company_pages:
         hit = next(((text, match) for text, _, kind, ctx, third_party in _items(snap)
                     if not (third_party or ctx & UNRELIABLE_CTX or kind in NON_SELF_KINDS)
                     if (match := INDIA_BASE_RE.search(text))), None)
@@ -818,13 +832,13 @@ def extract_evidence(company_key: str, snaps: list[PageSnapshot],
             break
 
     # explicit, self-referential team size; ranges/history/third-party/conflicts => unknown
-    size_ev = _size_evidence(company_key, snaps, company_name)
+    size_ev = _size_evidence(company_key, company_pages, company_name)
     if size_ev:
         out.append(size_ev)
 
     # negatives / signals
-    home_snaps = [s for s in snaps if s.is_homepage]
-    other_snaps = [s for s in snaps if not s.is_homepage]
+    home_snaps = [s for s in company_pages if s.is_homepage]
+    other_snaps = [s for s in company_pages if not s.is_homepage]
     hit = _find(home_snaps, [STAFFING_HARD_RE])
     if hit:
         out.append(_ev(company_key, "negative:staffing_recruiting", "staffing_recruiting", *hit,
@@ -837,7 +851,7 @@ def extract_evidence(company_key: str, snaps: list[PageSnapshot],
     for ctype, pat, val in (("negative:staff_augmentation", STAFF_AUG_RE, "staff_augmentation"),
                             ("negative:global_consultancy", GLOBAL_CONSULTANCY_RE, "global_consultancy"),
                             ("signal:hiring_info_only", HIRING_RE, "hiring")):
-        hit = _find(snaps, [pat])
+        hit = _find(company_pages, [pat])
         if hit:
             note = {"signal:hiring_info_only": "recorded for information; weight 0; hiring is NOT purchase intent",
                     }.get(ctype, "")
@@ -846,7 +860,22 @@ def extract_evidence(company_key: str, snaps: list[PageSnapshot],
     if cw:
         out.append(cw)
     out += mentions
-    out += _catalog_facts(company_key, snaps)  # appended LAST: never displaces or reorders the legacy evidence
+    out += _catalog_facts(company_key, company_pages)  # appended LAST: never displaces or reorders the legacy evidence
+    for kind in ("detail", "index"):
+        for snap in snaps:
+            if page_kind(snap.url, snap.is_homepage) != "work":
+                continue
+            if project_path(urlsplit(snap.url).path) != kind:
+                continue
+            parts = project_excerpts(snap.page, kind, name_forms(company_key, company_name))
+            if parts:
+                claim = "capability:client_application_delivery"
+                excerpt = " … ".join(parts)[:EXCERPT_CAP]
+                out.append(Evidence(make_id(company_key, claim, "client_application", snap.url, excerpt),
+                                    company_key, claim, "client_application", SOURCE_SUPPORTED,
+                                    "first_party_page", snap.url, snap.fetched_at, excerpt, parts,
+                                    "first-party client project account"))
+                return out[:MAX_EVIDENCE_PER_COMPANY]
     return out[:MAX_EVIDENCE_PER_COMPANY]
 
 

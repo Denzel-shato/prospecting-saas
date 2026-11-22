@@ -57,6 +57,7 @@ CLAIM_TYPES: dict[str, str] = {
     "negative:staffing_mention": "staffing/recruiting wording on a secondary page",
     "negative:staff_augmentation": "staff-augmentation / hire-developers wording",
     "negative:global_consultancy": "global consultancy / systems-integrator wording",
+    "capability:client_application_delivery": "a first-party project describes delivering an application for a client",
     "signal:client_work": "client-work/portfolio wording beyond a bare label (NOT purchase intent)",
     "signal:hiring_info_only": "hiring wording; recorded, weight 0 (NOT purchase intent)",
 }
