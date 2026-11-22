@@ -210,6 +210,8 @@ def run_pipeline(cfg: RunConfig, adapters: list[Adapter], fetcher: PoliteFetcher
             st.update(status="ok", count=len(got))
             if getattr(ad, "run_note", ""):
                 st["note"] = ad.run_note
+            if getattr(ad, "yield_stats", None):
+                st["yield"] = dict(ad.yield_stats)
             discovered.extend(got)
         except DiscoveryBlocked as exc:
             st.update(status="blocked", count=0, reason=str(exc))

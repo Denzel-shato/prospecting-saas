@@ -228,12 +228,19 @@ class DrupalOrgAdapter(Adapter):
     _SERVICES = re.compile(
         r"\b(?:agency|studio|consulting|consultancy|development services|we (?:build|develop|design))\b", re.I)
     _FRONTEND = re.compile(r"\b(?:React|Next\.?js|TypeScript|headless|decoupled)\b", re.I)
+    # Product/hosting-vendor wording in a directory profile. Generic words such as "platform" are deliberately absent
+    # ("specialists in the Drupal platform" is an agency); only the vendor's own offering wording counts.
+    _VENDOR = re.compile(
+        r"\b(?:saas|software as a service|our (?:platform|products?|software|modules?)|managed hosting|"
+        r"hosting (?:provider|company|platform)|free trial|start (?:a )?free)\b", re.I)
+    _CLIENT_SERVICE_NOUN = re.compile(r"\b(?:agency|studio|consulting|consultancy)\b", re.I)
 
     def __init__(self, client: ApiClient, *, worldwide: bool = False):
         require_zero_cost(self.name, self.cost_class)
         self.client = client
         self.worldwide = worldwide
         self.run_note = ""
+        self.yield_stats: dict = {}
 
     def discover(self) -> list[Candidate]:
         # Reuse the first-party geography patterns as directory screening hints only.
@@ -242,6 +249,10 @@ class DrupalOrgAdapter(Adapter):
         found = {}
         records = 0
         retrieved_at = utc_now_iso()
+        ys = {k: 0 for k in ("records", "invalid_record", "geography_rejected", "no_website", "no_profile_text",
+                             "no_service_wording", "vendor_like_no_service_noun", "duplicate_domain",
+                             "frontend_hint", "candidates")}
+        self.yield_stats = ys
         for page in range(self.MAX_PAGES):
             query = urlencode({"type": "organization", "limit": self.PAGE_SIZE, "sort": "changed",
                                "direction": "DESC", "page": page})
@@ -250,51 +261,72 @@ class DrupalOrgAdapter(Adapter):
             if not isinstance(rows, list):
                 raise DiscoveryBlocked("drupal_org: expected an organization list in the API response")
             records += len(rows)
+            ys["records"] = records
             for row in rows:
                 if not isinstance(row, dict) or row.get("type") != "organization":
+                    ys["invalid_record"] += 1
                     continue
                 location = row.get("field_organization_headquarters")
                 link = row.get("field_link")
                 body = row.get("body")
                 name, node_id = row.get("title"), row.get("nid")
                 if not all(isinstance(value, str) and value.strip() for value in (name, node_id)):
+                    ys["invalid_record"] += 1
                     continue
                 if not node_id.isascii() or not node_id.isdecimal():
+                    ys["invalid_record"] += 1
                     continue
                 location = location if isinstance(location, str) else ""
                 if self.worldwide:
                     if INDIA_LOCATION_RE.search(location) or location.strip().upper() == "IN":
+                        ys["geography_rejected"] += 1
                         continue
                 else:
                     has_us_hint = (US_COUNTRY_RE.search(location) or location.strip() == "US"
                                    or US_ADDRESS_RE.search(location) or US_BASED_RE.search(f"based in {location}"))
                     if not has_us_hint or (NON_US_RE.search(f"based in {location}")
                                            and not US_COUNTRY_RE.search(location)):
+                        ys["geography_rejected"] += 1
                         continue
                 url = link.get("url") if isinstance(link, dict) else None
                 if not isinstance(url, str) or not url.strip().lower().startswith(("https://", "http://")):
+                    ys["no_website"] += 1
                     continue
                 url = url.strip()
                 domain = canonical_domain(url)
                 if not is_first_party_candidate(domain) or domain == "drupal.org":
+                    ys["no_website"] += 1
                     continue
                 html = body.get("value") if isinstance(body, dict) else None
                 if not isinstance(html, str):
+                    ys["no_profile_text"] += 1
                     continue
                 source = f"https://www.drupal.org/node/{node_id}"
                 description = " ".join(parse_html(html, source).blocks)
                 if not self._SERVICES.search(description):
+                    ys["no_service_wording"] += 1
                     continue
+                # A vendor's own product/hosting wording without any agency/studio/consulting noun is not evidence of
+                # client services ("we build ..." can describe a product). It is kept, but earns no service boost.
+                vendor_like = bool(self._VENDOR.search(description)) and not self._CLIENT_SERVICE_NOUN.search(description)
+                frontend = bool(self._FRONTEND.search(description))
+                if domain in found:
+                    ys["duplicate_domain"] += 1
                 # Save flags and attribution only. The directory profile is not qualification evidence.
                 candidate = Candidate(name=name.strip(), url=url, domain=domain, discovery_method=AUTOMATED,
                                       source=self.name, source_id=node_id, source_url=source,
                                       source_license=self.license_note, retrieved_at=retrieved_at,
-                                      attrs={"directory_service_hint": True,
-                                             "directory_frontend_hint": bool(self._FRONTEND.search(description))})
+                                      attrs={"directory_service_hint": not vendor_like,
+                                             "directory_vendor_hint": vendor_like,
+                                             "directory_frontend_hint": frontend})
+                if domain not in found:
+                    ys["vendor_like_no_service_noun"] += vendor_like
+                    ys["frontend_hint"] += frontend
                 found.setdefault(domain, candidate)
             if not data.get("next") or not rows:
                 break
         screen = "no Indian headquarters in the listing" if self.worldwide else "US location hints"
+        ys["candidates"] = len(found)
         self.run_note = (f"{records} directory records screened; {len(found)} distinct candidate domains "
                          f"with client-services wording and {screen}")
         return list(found.values())

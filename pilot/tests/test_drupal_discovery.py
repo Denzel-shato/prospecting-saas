@@ -58,3 +58,53 @@ class DrupalDiscoveryTests(unittest.TestCase):
 
         with self.assertRaisesRegex(DiscoveryBlocked, "expected an organization list"):
             DrupalOrgAdapter(Client()).discover()
+
+
+class DrupalYieldAndVendorTests(unittest.TestCase):
+    @staticmethod
+    def _org(nid, url, loc, text):
+        return {"type": "organization", "nid": nid, "title": f"Org {nid}", "field_link": {"url": url},
+                "field_organization_headquarters": loc, "body": {"value": f"<p>{text}</p>"}}
+
+    def _run(self, rows, **kw):
+        class Client:
+            def request_json(self, method, url):
+                return {"list": rows}
+
+        adapter = DrupalOrgAdapter(Client(), **kw)
+        return adapter, adapter.discover()
+
+    def test_vendor_without_agency_noun_is_kept_but_gets_no_service_boost(self):
+        rows = [self._org("1", "https://vendor.example", "Austin, TX", "We build our platform, a SaaS for hosting sites."),
+                self._org("2", "https://agency.example", "Austin, TX", "A digital agency building React apps."),
+                self._org("3", "https://mixed.example", "Austin, TX", "A consulting agency that also sells our product.")]
+        adapter, cands = self._run(rows)
+        by = {c.source_id: c for c in cands}
+        self.assertEqual(len(cands), 3)
+        self.assertTrue(by["1"].attrs["directory_vendor_hint"])
+        self.assertFalse(by["1"].attrs["directory_service_hint"])
+        self.assertLess(prequalify(by["1"].attrs)[0], prequalify(by["2"].attrs)[0])
+        self.assertEqual(prequalify(by["2"].attrs)[0], 4)  # unchanged: service +3, frontend +1
+        self.assertFalse(by["3"].attrs["directory_vendor_hint"])  # an agency noun shields mixed wording
+        self.assertEqual(prequalify(by["1"].attrs)[0], -3)
+
+    def test_drupal_platform_alone_is_not_vendor_wording(self):
+        adapter, (c,) = self._run([self._org("1", "https://a.example", "Austin, TX",
+                                             "We build sites for clients on the Drupal platform.")])
+        self.assertFalse(c.attrs["directory_vendor_hint"])
+        self.assertTrue(c.attrs["directory_service_hint"])
+
+    def test_yield_stats_account_for_every_rejection(self):
+        rows = [self._org("1", "https://ok.example", "Denver, CO", "A React agency."),
+                self._org("2", "https://india.example", "Pune, India", "A React agency."),
+                self._org("3", "https://nolink.example", "", "A React agency."),
+                self._org("4", "https://noservice.example", "Toronto, Canada", "Sells widgets."),
+                self._org("5", "https://www.ok.example", "Denver, CO", "A studio."),
+                {"type": "other"}]
+        rows[2]["field_link"] = {}
+        adapter, cands = self._run(rows, worldwide=True)
+        y = adapter.yield_stats
+        self.assertEqual(len(cands), 1)
+        self.assertEqual((y["records"], y["candidates"], y["geography_rejected"], y["no_website"],
+                          y["no_service_wording"], y["duplicate_domain"], y["invalid_record"]), (6, 1, 1, 1, 1, 1, 1))
+        self.assertEqual(y["frontend_hint"], 1)

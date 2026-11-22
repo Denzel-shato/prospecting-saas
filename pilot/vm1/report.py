@@ -183,6 +183,9 @@ def render_report(run: dict, m: dict) -> str:
         L.append(f"- `{s['adapter']}` ({s['cost_class']}): **{s['status']}**, {s['count']} candidates{extra}")
         if s.get("note"):
             L.append(f"  - query note: {s['note']}")
+        if s.get("yield"):
+            L.append("  - source yield (rejection reasons; counts of directory records, not qualified leads): "
+                     + ", ".join(f"{k}={v}" for k, v in s["yield"].items()))
         if s.get("terms_note"):
             L.append(f"  - terms noted: {s['terms_note']} (verify before relying on it; license: {s.get('license') or 'n/a'})")
     if not man["discovery_status"]:
