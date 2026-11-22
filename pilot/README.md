@@ -28,6 +28,7 @@ Snapshots and live runs stay local and git-ignored.
     cd pilot
     python3 -m unittest discover -s tests -t .          # 211 tests as of Issue #5 checkpoint (check CI)
     python3 -m vm1 synthetic                             # offline pipeline check on FICTIONAL data (never a finding)
+    python3 -m vm1 run --icp icp/frontend-studio-worldwide.json --sources pickanagency --max-candidates 10   # bounded agency API pilot
     python3 -m vm1 run --sources wikidata                # live, keyless, zero-cost discovery
     python3 -m vm1 run --sources wikidata,openstreetmap --ack-overpass-terms   # adds Overpass (see below)
     python3 -m vm1 run --sources wikidata --manual-csv my.csv                  # name,url CSV, labelled MANUAL
@@ -41,6 +42,7 @@ Outputs go to `runs/<run_id>/` (git-ignored): `manifest.json`, `candidates.json`
 ## Discovery methods (all free + keyless; paid/keyed names fail closed)
 | Source | Status | Notes |
 |---|---|---|
+| Pick an Agency REST (`pickanagency`) | implemented; live yield unmeasured | Free keyless API, CC BY 4.0. Up to 3 queries × 25 listings; 1.1-second delay. Web/marketing-agency bias; agency websites need first-party verification; credit Pick an Agency when displaying API data publicly. |
 | Wikidata SPARQL | implemented | CC0. Expect thin coverage of small studios. Class/country IDs are verified by label at runtime. |
 | OpenStreetMap Overpass (`office=it` + `website`, US) | implemented, **needs `--ack-overpass-terms`** | ODbL. Public instance policy: identifying UA, no parallel use, low volume, commercial use should self-host. You must confirm you accept that. |
 | Manual CSV | implemented | Always labelled `manual`; never counted as autonomous discovery. |
