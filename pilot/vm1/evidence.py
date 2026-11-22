@@ -473,6 +473,15 @@ def _offering(text: str, m: re.Match, kind: str, ctx, third_party: bool, page=No
         return False
     lo, hi = sentence_bounds(text, m.start(), m.end())
     sent = text[lo:hi]
+    # An advisory service ABOUT SaaS does not establish that the agency
+    # DELIVERS SaaS/web applications. Preserve it as a mention rather than
+    # granting a web_app capability simply because the page is /services.
+    if tag == "web_app" and re.fullmatch(
+            r"\s*SaaS\s+(?:scalability|architecture|performance|security|"
+            r"compliance|strategy|growth)\s+(?:consulting|audit|audits|"
+            r"assessment|assessments|advisory|review|reviews)\s*[.!]?\s*",
+            sent, re.I):
+        return False
     if own_product_reason(sent, kind, page, i, tag, text[:lo]):
         return False
     if tag == "typescript" and BACKEND_TYPESCRIPT_RE.search(sent) and not FRONTEND_TYPESCRIPT_RE.search(sent):
