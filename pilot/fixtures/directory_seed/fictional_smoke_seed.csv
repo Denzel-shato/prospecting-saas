@@ -1,0 +1,7 @@
+directory_id,name,url,listing_url
+example_directory_a,Brightlane Studio,https://brightlane-studio.example/,https://directory.example/partners/brightlane
+example_directory_b,Brightlane Studio (second listing),https://www.BRIGHTLANE-studio.example/about?utm_source=x,https://directory-two.example/agencies/brightlane
+example_directory_a,Northwind UI,https://northwind-ui.example/,
+example_directory_a,Directory profile page,https://directory.example/partners/profile-only,
+example_directory_b,Social page,https://www.linkedin.com/company/example,
+example_directory_a,,,

@@ -44,7 +44,26 @@
       "fit": "Next.js and modern frontend agencies",
       "mode": "manual_seed_only",
       "automated_adapter": false,
-      "automated_access_verified": false
+      "automated_access_verified": false,
+      "access_review": {
+        "reviewed_on": "2026-11-22",
+        "outcome": "manual_only",
+        "documented_api_found": false,
+        "robots_txt_verified": false,
+        "findings": [
+          "No documented API, feed or export for the partner directory was found on vercel.com/partners, llms.txt or the legal pages.",
+          "The Acceptable Use Policy prohibits scraping and using automation to extract data from Vercel properties, and contains no exception for the public partner directory.",
+          "robots.txt could not be retrieved with the tools available in this review, so crawl permission is unverified.",
+          "The directory preview shows partner logos and names; own-website URLs were not visible in the page content reviewed."
+        ],
+        "evidence_urls": [
+          "https://vercel.com/partners",
+          "https://vercel.com/legal/acceptable-use-policy",
+          "https://vercel.com/legal/terms",
+          "https://vercel.com/llms.txt"
+        ],
+        "unblock_requires": "Written permission or a documented partner-directory API from Vercel, plus a readable robots.txt that allows the path."
+      }
     },
     {
       "id": "netlify_agency_directory",
@@ -57,7 +76,25 @@
       "fit": "React/Next.js and frontend development agencies",
       "mode": "manual_seed_only",
       "automated_adapter": false,
-      "automated_access_verified": false
+      "automated_access_verified": false,
+      "access_review": {
+        "reviewed_on": "2026-11-22",
+        "outcome": "manual_only",
+        "documented_api_found": false,
+        "robots_txt_verified": false,
+        "findings": [
+          "No API, feed, export or data-reuse terms are described on the agency directory page or the experts-directory announcement.",
+          "The Website Terms of Use grant a limited, revocable licence with no right to copy or store the Website and give no permission for automated collection.",
+          "robots.txt could not be retrieved with the tools available in this review, so crawl permission is unverified.",
+          "The index lists agency names and regions and links to Netlify profile pages; the agencies' own website URLs were not shown on the index, so a crawl of the index alone would not yield first-party domains."
+        ],
+        "evidence_urls": [
+          "https://www.netlify.com/agency-directory/",
+          "https://www.netlify.com/blog/introducing-the-new-netlify-experts-directory",
+          "https://www.netlify.com/legal/terms-of-use"
+        ],
+        "unblock_requires": "Written permission or a documented directory API from Netlify, plus a readable robots.txt that allows the path."
+      }
     },
     {
       "id": "sanity_agency_partners",

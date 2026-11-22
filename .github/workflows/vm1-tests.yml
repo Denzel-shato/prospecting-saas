@@ -39,3 +39,8 @@ jobs:
       - name: Exercise fictional offline pipeline
         working-directory: pilot
         run: python3 -m vm1 synthetic --out "$RUNNER_TEMP/vm1-synthetic"
+      - name: Exercise fictional directory seed ingestion
+        working-directory: pilot
+        run: |
+          python3 -m vm1 seed-directory --csv fixtures/directory_seed/fictional_smoke_seed.csv \
+            --source-catalog fixtures/directory_seed/fixture_catalog.json --out "$RUNNER_TEMP/vm1-directory-seed"

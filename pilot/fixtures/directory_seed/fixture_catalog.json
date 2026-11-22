@@ -1,0 +1,13 @@
+{
+  "_notice": "SYNTHETIC FIXTURE: fictional directories on the reserved .example TLD. Used only by offline tests; not a statement about any real directory.",
+  "schema_version": 1,
+  "as_of": "2026-11-22",
+  "proposed_directory_sources": [
+    {"id": "example_directory_a", "name": "Example Directory A", "url": "https://directory.example/partners",
+     "priority": 1, "icps": ["frontend-studio-worldwide-v1"], "fit": "fixture", "mode": "manual_seed_only",
+     "automated_adapter": false, "automated_access_verified": false},
+    {"id": "example_directory_b", "name": "Example Directory B", "url": "https://directory-two.example/agencies",
+     "priority": 2, "icps": ["frontend-studio-worldwide-v1"], "fit": "fixture", "mode": "manual_seed_only",
+     "automated_adapter": false, "automated_access_verified": false}
+  ]
+}

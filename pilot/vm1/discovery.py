@@ -427,13 +427,15 @@ class SyntheticFixtureAdapter(Adapter):
                 for c in self.world["candidates"]]
 
 
-KEYLESS_REGISTRY = {"drupal_org", "wikidata", "openstreetmap", "manual_csv", "synthetic"}
+KEYLESS_REGISTRY = {"drupal_org", "wikidata", "openstreetmap", "manual_csv", "directory_seed", "synthetic"}
 
 
 def build_adapters(names: list[str], *, client: ApiClient | None = None,
                    ack_overpass_terms: bool = False, manual_csv: str | None = None,
                    synthetic_world: str | None = None,
-                   wikidata_limit: int = 500, worldwide: bool = False) -> list[Adapter]:
+                   wikidata_limit: int = 500, worldwide: bool = False,
+                   directory_seed_csv: str | None = None, directory_source: str | None = None,
+                   source_catalog: str | None = None) -> list[Adapter]:
     """Build adapters by name. Unknown/paid/keyed names fail closed."""
     adapters: list[Adapter] = []
     for raw in names:
@@ -441,6 +443,10 @@ def build_adapters(names: list[str], *, client: ApiClient | None = None,
         if n in ("overpass", "osm"):
             n = "openstreetmap"
         if n not in KEYLESS_REGISTRY:
+            from .directory_seed import DEFAULT_CATALOG, manual_only_blocker
+            blocker = manual_only_blocker(n, source_catalog or DEFAULT_CATALOG)
+            if blocker:
+                raise DiscoveryBlocked(blocker)
             raise PaidApiBlocked(
                 f"discovery source {raw!r} is not a registered free-keyless source "
                 f"({sorted(KEYLESS_REGISTRY)}). Paid/keyed providers (Exa, Tavily, Brave, Hunter, "
@@ -455,6 +461,12 @@ def build_adapters(names: list[str], *, client: ApiClient | None = None,
             if not manual_csv:
                 raise DiscoveryBlocked("manual_csv source needs --manual-csv PATH")
             adapters.append(ManualCsvAdapter(manual_csv))
+        elif n == "directory_seed":
+            if not directory_seed_csv:
+                raise DiscoveryBlocked("directory_seed source needs --directory-seed-csv PATH")
+            from .directory_seed import DEFAULT_CATALOG, DirectorySeedAdapter
+            adapters.append(DirectorySeedAdapter(directory_seed_csv, directory_id=directory_source,
+                                                 catalog_path=source_catalog or DEFAULT_CATALOG))
         elif n == "synthetic":
             if not synthetic_world:
                 raise DiscoveryBlocked("synthetic source needs a world.json path")

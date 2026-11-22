@@ -76,7 +76,8 @@ def dedup(candidates: list[Candidate]) -> tuple[list[Candidate], list[dict], lis
                              "reason": "non_first_party_domain", "method": c.discovery_method})
         elif c.domain in kept:
             rejected.append({"name": c.name, "url": c.url, "domain": c.domain, "reason": "duplicate_domain",
-                             "duplicate_of": kept[c.domain].name, "method": c.discovery_method})
+                             "duplicate_of": kept[c.domain].name, "method": c.discovery_method,
+                             "source": c.source, "source_id": c.source_id})
         else:
             kept[c.domain] = c
     by_name: dict[str, list[str]] = {}
@@ -112,6 +113,11 @@ def research_company(cand: Candidate, fetcher: PoliteFetcher,
                       "retrieved_at": cand.retrieved_at},
         "homepage": {}, "secondary": [], "secondary_links_found": 0,
     }
+    if cand.attrs.get("seed_directory"):  # manual directory seed: keep the directory attribution (not evidence)
+        rec["discovery"]["directory"] = dict(cand.attrs["seed_directory"])
+        rec["discovery"]["directory_occurrences"] = [
+            {k: o[k] for k in ("directory_id", "directory_name", "directory_url", "listing_url", "listed_name",
+                               "listed_url")} for o in cand.attrs.get("seed_occurrences", [])]
     snaps: list[PageSnapshot] = []
     pages_by_url: dict[str, PageData] = {}
 
@@ -202,6 +208,7 @@ def run_pipeline(cfg: RunConfig, adapters: list[Adapter], fetcher: PoliteFetcher
     t = time.monotonic()
     discovered: list[Candidate] = []
     discovery_status: list[dict] = []
+    seed_summaries: list[dict] = []
     for ad in adapters:
         st = {"adapter": ad.name, "cost_class": ad.cost_class, "terms_note": ad.terms_note,
               "license": ad.license_note}
@@ -213,6 +220,8 @@ def run_pipeline(cfg: RunConfig, adapters: list[Adapter], fetcher: PoliteFetcher
             if getattr(ad, "yield_stats", None):
                 st["yield"] = dict(ad.yield_stats)
             discovered.extend(got)
+            if hasattr(ad, "seed_summary"):
+                seed_summaries.append(ad.seed_summary())
         except DiscoveryBlocked as exc:
             st.update(status="blocked", count=0, reason=str(exc))
         discovery_status.append(st)
@@ -261,7 +270,10 @@ def run_pipeline(cfg: RunConfig, adapters: list[Adapter], fetcher: PoliteFetcher
                    "selected_automated": sum(1 for c in selected if c.discovery_method == AUTOMATED),
                    "selected_manual": sum(1 for c in selected if c.discovery_method == "manual"),
                    "selected_synthetic": sum(1 for c in selected if c.discovery_method == "synthetic_fixture"),
-                   "raw_automated": sum(1 for c in discovered if c.discovery_method == AUTOMATED)},
+                   "raw_automated": sum(1 for c in discovered if c.discovery_method == AUTOMATED),
+                   # Manual directory seeds are a SUBSET of the manual counts above and never of automated.
+                   "raw_manual_directory_seed": sum(1 for c in discovered if c.source == "directory_seed"),
+                   "selected_manual_directory_seed": sum(1 for c in selected if c.source == "directory_seed")},
         "http_requests_logged": len(fetcher.log), "paid_api_spend_usd": ledger.total_usd,
         "spend_ledger_entries": len(ledger.entries),
         "credentials_detected_in_env_but_ignored": credentials_present(),
@@ -271,6 +283,10 @@ def run_pipeline(cfg: RunConfig, adapters: list[Adapter], fetcher: PoliteFetcher
         "possible_same_company_different_domain": possible_same,
         "sending": "none: this prototype contains no email/Gmail/SMTP code path",
     }
+    if seed_summaries:
+        manifest["directory_seed"] = {"inputs": seed_summaries, "excluded_from_autonomous_metrics": True,
+                                      "note": "manual review of directory listings; occurrence log in "
+                                              "directory_seed_occurrences.json"}
     if cfg.mode == "replay":
         manifest["replay"] = dict(cfg.extra.get("replay") or {}, network="disabled",
                                   counts_as_fresh_discovery=False, counts_as_independent_live_result=False)
@@ -279,6 +295,9 @@ def run_pipeline(cfg: RunConfig, adapters: list[Adapter], fetcher: PoliteFetcher
     _write_json(out / "manifest.json", manifest)
     _write_json(out / "candidates.json", [asdict(c) for c in selected])
     _write_json(out / "rejected.json", rejected)
+    if seed_summaries:
+        _write_json(out / "directory_seed_occurrences.json",
+                    [o for c in discovered for o in c.attrs.get("seed_occurrences", [])])
     _write_json(out / "companies.json", companies)
     _write_json(out / "drafts.json", drafts)
     with (out / "fetch_log.jsonl").open("w", encoding="utf-8") as fh:

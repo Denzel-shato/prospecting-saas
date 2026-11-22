@@ -105,14 +105,26 @@ def main(argv: list[str] | None = None) -> int:
     r = sub.add_parser("run", help="live run (free keyless sources only)")
     r.add_argument("--icp", default=str(ROOT / "icp" / "frontend-studio.json"))
     r.add_argument("--out", default=str(ROOT / "runs"))
-    r.add_argument("--sources", default="wikidata", help="comma list: wikidata,drupal_org,openstreetmap,manual_csv")
+    r.add_argument("--sources", default="wikidata", help="comma list: wikidata,drupal_org,openstreetmap,manual_csv,directory_seed")
     r.add_argument("--ack-overpass-terms", action="store_true",
                    help="confirm you read the Overpass public-instance policy (needed for openstreetmap)")
     r.add_argument("--manual-csv", help="name,url CSV; labelled MANUAL, excluded from autonomous metrics")
+    r.add_argument("--directory-seed-csv",
+                   help="manually reviewed directory seed CSV (name,url[,directory_id,listing_url]); keeps directory "
+                        "attribution, dedupes by domain, labelled MANUAL, excluded from autonomous metrics")
+    r.add_argument("--directory-source", help="catalog directory id for rows without a directory_id column")
+    r.add_argument("--source-catalog", help="source catalog JSON (default: pilot/source_catalog.json)")
     r.add_argument("--max-candidates", type=int, default=40)
     r.add_argument("--seed", default="vm1-pilot-1")
     r.add_argument("--min-delay", type=float, default=2.0, help="seconds between requests to one host")
     r.add_argument("--labels", help="human labels CSV to include in the report")
+
+    sd = sub.add_parser("seed-directory", help="OFFLINE: ingest a manually reviewed directory seed CSV "
+                                               "(attribution + domain dedupe); no network, no qualification")
+    sd.add_argument("--csv", required=True, help="name,url[,directory_id,listing_url] CSV")
+    sd.add_argument("--directory-source", help="catalog directory id for rows without a directory_id column")
+    sd.add_argument("--source-catalog", help="source catalog JSON (default: pilot/source_catalog.json)")
+    sd.add_argument("--out", required=True, help="output directory for seeds, occurrence log and summary")
 
     s = sub.add_parser("synthetic", help="offline pipeline check on fictional fixtures")
     s.add_argument("--icp", default=str(ROOT / "icp" / "frontend-studio.json"))
@@ -172,6 +184,21 @@ def main(argv: list[str] | None = None) -> int:
         print(write_report(a.run, a.labels))
         return 0
 
+    if a.cmd == "seed-directory":
+        from .directory_seed import (DEFAULT_CATALOG, CatalogError, ingest_rows, load_catalog, read_seed_rows,
+                                     write_seed_artifacts)
+        try:
+            catalog = load_catalog(a.source_catalog or DEFAULT_CATALOG)
+            result = ingest_rows(read_seed_rows(a.csv), catalog,
+                                 default_directory=(a.directory_source or "").strip().lower() or None)
+        except (CatalogError, DiscoveryBlocked) as exc:
+            print(f"BLOCKED: {exc}", file=sys.stderr)
+            return 3
+        write_seed_artifacts(a.out, result)
+        print(f"directory seed ingest (offline, no network): {result.stats}")
+        print(f"artifacts: {a.out}  (manual input; not autonomous discovery; not qualification evidence)")
+        return 0
+
     if a.cmd == "requalify":
         from .requalify import requalify_run
         try:
@@ -197,8 +224,12 @@ def main(argv: list[str] | None = None) -> int:
             names = [n for n in a.sources.split(",") if n.strip()]
             if a.manual_csv and "manual_csv" not in names:
                 names.append("manual_csv")
+            if a.directory_seed_csv and "directory_seed" not in names:
+                names.append("directory_seed")
             adapters = build_adapters(names, client=ApiClient(), ack_overpass_terms=a.ack_overpass_terms,
-                                      manual_csv=a.manual_csv, worldwide=a.policy.geography.exclude_india)
+                                      manual_csv=a.manual_csv, worldwide=a.policy.geography.exclude_india,
+                                      directory_seed_csv=a.directory_seed_csv, directory_source=a.directory_source,
+                                      source_catalog=a.source_catalog)
             fetcher = PoliteFetcher(min_delay=a.min_delay)
             cfg = RunConfig(icp=a.policy, out_dir=Path(a.out), mode="live",
                             max_candidates=a.max_candidates, seed=a.seed)

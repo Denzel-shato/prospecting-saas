@@ -122,7 +122,7 @@ def verdict(run: dict, m: dict) -> list[str]:
         return ["**NOT A FINDING.** This run used FICTIONAL synthetic fixtures to exercise the pipeline. "
                 "It says nothing about real discovery quality, real companies, or ICP fit."]
     sources = {source["adapter"] for source in man.get("discovery_status", [])}
-    if sources == {"manual_csv"}:
+    if sources and sources <= {"manual_csv", "directory_seed"}:
         return [f"**MANUAL QUALIFICATION RUN.** Evaluated {c['selected_manual']} manually supplied candidates. "
                 "Autonomous discovery was outside this run's scope."]
     lines = []
