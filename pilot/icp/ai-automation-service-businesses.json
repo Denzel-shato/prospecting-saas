@@ -1,0 +1,195 @@
+{
+  "schema_version": 1,
+  "id": "ai-automation-service-businesses-us-v1",
+  "policy_version": "1.0.0",
+  "name": "AI automation consultancy -> US service businesses",
+  "description": "US local and professional service businesses where public customer intake processes may indicate a possible automation need, NOT current purchase intent.",
+  "seller": "Fictional independent automation consultancy providing customer intake and workflow integrations.",
+  "notes": "ILLUSTRATIVE POLICY ONLY: fictional seller, unvalidated target market; no independent precision or purchase-intent claim. US-only geography evidence is incomplete. Draft generation disabled.",
+  "geography": {
+    "countries": [
+      "US"
+    ],
+    "points": 20
+  },
+  "size": {
+    "band": [
+      10,
+      100
+    ],
+    "hard_max": 500,
+    "in_band_points": 15,
+    "above_band_points": -10,
+    "below_band_points": 0
+  },
+  "target_type": {
+    "id": "service_business",
+    "label": "local or professional service business",
+    "short_label": "service_business",
+    "identity": [
+      {
+        "claim": "company_type:local_service_signal",
+        "strength": "strong",
+        "points": 20,
+        "rule": "company type: local or professional service business supported by multiple distinct on-site signals",
+        "min_distinct_values": 2
+      }
+    ],
+    "identity_missing_unknown": "identity: no sufficient evidence of local or professional service business",
+    "identity_missing_reason": "no reliable evidence to establish local or professional service business",
+    "capabilities": [
+      {
+        "id": "home_services",
+        "claim": "service:home_services",
+        "points": 8
+      },
+      {
+        "id": "healthcare_practice",
+        "claim": "service:healthcare_practice",
+        "points": 8
+      },
+      {
+        "id": "professional_services",
+        "claim": "service:professional_services",
+        "points": 8
+      },
+      {
+        "id": "customer_intake",
+        "claim": "capability:customer_intake",
+        "points": 10
+      }
+    ],
+    "capability_cap": 25,
+    "min_capabilities": 1,
+    "capability_noun": "capabilities",
+    "capability_rule_prefix": "capability: ",
+    "capabilities_missing_unknown": "capabilities: no offered/relevant target capability evidenced",
+    "capabilities_missing_reason": "none of this policy's capability claims are present",
+    "qualified_reason": "first-party evidence supports local or professional service business identity and required capabilities",
+    "mixed_identity_template": "mixed identity: target type alongside excluded profiles {values}",
+    "gate_cap_note": "missing target-type evidence cannot be offset by location, size, or other signals"
+  },
+  "screens": [
+    {
+      "rule": "staffing_recruiting",
+      "type_id": "staffing",
+      "claim": "negative:staffing_recruiting",
+      "detail": "homepage describes a staffing/recruiting business"
+    }
+  ],
+  "type_profiles": [
+    {
+      "id": "saas_vendor",
+      "claim": "company_type:saas_vendor_signal",
+      "min_distinct_values": 3,
+      "shielded_by_strong_identity": false,
+      "reason_template": "software product vendor signals {values}"
+    },
+    {
+      "id": "enterprise_software",
+      "claim": "company_type:enterprise_signal",
+      "min_distinct_values": 2,
+      "any_value": [
+        "listed_company"
+      ],
+      "shielded_by_strong_identity": false,
+      "reason_template": "large corporate/stock exchange signals {values}"
+    },
+    {
+      "id": "software_studio",
+      "claim": "entity_type:studio_or_agency",
+      "min_distinct_values": 1,
+      "shielded_by_strong_identity": false,
+      "reason_template": "software development studio signal {values}"
+    },
+    {
+      "id": "ai_consultancy_competitor",
+      "claim": "entity_type:ai_automation_consultancy",
+      "min_distinct_values": 1,
+      "shielded_by_strong_identity": false,
+      "reason_template": "AI consultancy competitor signal {values}"
+    },
+    {
+      "id": "marketing_agency_competitor",
+      "claim": "entity_type:marketing_agency",
+      "min_distinct_values": 1,
+      "shielded_by_strong_identity": false,
+      "reason_template": "marketing agency competitor signal {values}"
+    }
+  ],
+  "bonuses": [],
+  "penalties": [],
+  "decision_makers": {
+    "role_classes": [
+      "founder_ceo",
+      "other_leader"
+    ],
+    "points": 5
+  },
+  "tiers": {
+    "strong": 65,
+    "possible": 40
+  },
+  "strong_requirements": {
+    "geography": true,
+    "size_in_band": true,
+    "min_capabilities": 2
+  },
+  "prequalify": {
+    "positive_terms": [
+      "service area",
+      "free estimate",
+      "family owned",
+      "licensed and insured",
+      "service business",
+      "plumbing",
+      "accounting firm",
+      "dental practice",
+      "home services"
+    ],
+    "negative_terms": [
+      "software as a service",
+      "software development company",
+      "marketing agency",
+      "ai consultancy",
+      "recruiting",
+      "platform"
+    ]
+  },
+  "page_selection": {
+    "relevance_tokens": [
+      "booking",
+      "appointment",
+      "estimate",
+      "quote",
+      "service",
+      "services",
+      "care",
+      "treatment",
+      "hvac",
+      "plumbing",
+      "roofing",
+      "cleaning",
+      "accounting",
+      "legal",
+      "dental",
+      "intake",
+      "contact"
+    ],
+    "extra_segments": {},
+    "slot_order": [
+      "about",
+      "service",
+      "service",
+      "team",
+      "work",
+      "service_other",
+      "contact",
+      "detail"
+    ],
+    "service_slug": null
+  },
+  "drafts": {
+    "enabled": false
+  }
+}
