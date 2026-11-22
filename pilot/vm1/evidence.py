@@ -411,13 +411,19 @@ CLIENT_ANCHOR_RE = re.compile(
     r"(?:startups?|founders?|businesses|brands|companies|enterprises|organi[sz]ations|merchants|retailers|agencies|"
     r"entrepreneurs)\b|\byour (?:product|idea|business|brand|app|startup|vision)\b|\bhire us\b|"
     r"\bpartner(?:s|ing)? with\b|\bengagements?\b", re.I)
+OWN_PRODUCT_PIVOT_RE = re.compile(
+    r"\b(?:beyond|from) (?:a |an |our |the |pure )?agency (?:into|to) "
+    r"(?:building )?(?:our own )?products?\b", re.I)
 PRODUCT_AMBIGUITY_TAGS = {"web_app", "custom_software"}
 
 
-def own_product_reason(sent: str, kind: str, page, i: int, tag: str | None) -> str | None:
+def own_product_reason(sent: str, kind: str, page, i: int, tag: str | None,
+                       preceding_text: str = "") -> str | None:
     """Why this sentence may describe the company's OWN product rather than a service sold to clients."""
     if OWN_PRODUCT_RE.search(sent):
         return "wording describes the company's own/first-party product development, not a client service"
+    if OWN_PRODUCT_PIVOT_RE.search(preceding_text) and not CLIENT_ANCHOR_RE.search(sent):
+        return "preceding wording describes a shift from agency work into own-product development"
     if tag in PRODUCT_AMBIGUITY_TAGS and BARE_PRODUCT_RE.search(sent) and not (
             CLIENT_ANCHOR_RE.search(sent) or kind == "services" or _adjacent_offer(page, i)
             or any(entity_self_referential(sent, e) for e in ENTITY_RE.finditer(sent))):
@@ -433,7 +439,7 @@ def _offering(text: str, m: re.Match, kind: str, ctx, third_party: bool, page=No
         return False
     lo, hi = sentence_bounds(text, m.start(), m.end())
     sent = text[lo:hi]
-    if own_product_reason(sent, kind, page, i, tag):
+    if own_product_reason(sent, kind, page, i, tag, text[:lo]):
         return False
     if tag == "typescript" and BACKEND_TYPESCRIPT_RE.search(sent) and not FRONTEND_TYPESCRIPT_RE.search(sent):
         return False
@@ -473,7 +479,7 @@ def _service_evidence(company_key: str, snaps: list[PageSnapshot], tag: str, pat
                                "company describes offering this to clients"), None
                 if mention is None:
                     lo, hi = sentence_bounds(text, m.start(), m.end())
-                    why = (own_product_reason(text[lo:hi], kind, snap.page, _i, tag)
+                    why = (own_product_reason(text[lo:hi], kind, snap.page, _i, tag, text[:lo])
                            if not (tp or (ctx & UNRELIABLE_CTX) or kind in NON_OFFERING_KINDS) else None)
                     mention = _ev(company_key, f"mention:{tag}", tag, snap, text, m,
                                   (why + "; " if why else "keyword present WITHOUT evidence the company offers it as "

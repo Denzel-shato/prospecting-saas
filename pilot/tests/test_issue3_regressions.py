@@ -209,6 +209,14 @@ class FirstPartyServiceIdentity(unittest.TestCase):
                 ev, _ = analyze([u.snap(html, url, home=False)])
                 self.assertNotIn("client_services", claims(ev, "entity_type:"))
 
+    def test_product_pivot_overrides_a_broad_offering_heading(self):
+        html = ("<h2>We build businesses.</h2>"
+                "<p>We're evolving beyond pure agency into product. We're building apps and SaaS solutions "
+                "to replace the clunky legacy software that's been around too long.</p>")
+        ev, _ = analyze([u.snap(html, "https://acme.example/about/", home=False)])
+        self.assertNotIn("web_app", claims(ev, "service:"))
+        self.assertIn("web_app", claims(ev, "mention:"))
+
     def test_own_product_studio_stays_weak(self):
         html = "<p>We're a development studio behind our own tabletop design product.</p>"
         _, result = analyze([u.snap(html + ADDR)])
