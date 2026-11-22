@@ -118,6 +118,7 @@ class PointRule:
 class Geography:
     countries: tuple  # () = no geographic requirement; ("US",) = US evidence required
     points: int
+    exclude_india: bool = False
 
 
 @dataclass(frozen=True)
@@ -198,7 +199,7 @@ class IcpPolicy:
     def max_possible_score(self) -> int:
         ident = max((r.points for r in self.target_type.identity), default=0)
         caps = min(self.target_type.capability_cap, sum(max(c.points, 0) for c in self.target_type.capabilities))
-        rest = (self.geography.points if self.geography.countries else 0) + max(self.size.in_band_points, 0)
+        rest = (self.geography.points if self.geography.countries or self.geography.exclude_india else 0) + max(self.size.in_band_points, 0)
         rest += sum(max(b.points, 0) for b in self.bonuses) + self.decision_makers.points
         return ident + caps + rest
 
@@ -405,12 +406,15 @@ def _parse(raw: dict, source_format: str) -> IcpPolicy:
         c.err("policy.policy_version", "must look like 1.0.0")
         ver = "0.0.0"
 
-    g = c.obj(d.get("geography"), "policy.geography", ("countries", "points"))
+    g = c.obj(d.get("geography"), "policy.geography", ("countries", "points"), ("exclude_india",))
     countries = g.get("countries", [])
     if not isinstance(countries, list) or any(x != "US" for x in countries) or len(countries) > 1:
         c.err("policy.geography.countries", "must be [] (no requirement) or [\"US\"]; the extractor only distinguishes US from non-US")
         countries = []
-    geo = Geography(tuple(countries), c.integer(g, "points", "policy.geography", -50, 100))
+    exclude_india = c.boolean(g, "exclude_india", "policy.geography") if "exclude_india" in g else False
+    if countries and exclude_india:
+        c.err("policy.geography", "exclude_india is supported for the worldwide profile only")
+    geo = Geography(tuple(countries), c.integer(g, "points", "policy.geography", -50, 100), exclude_india)
 
     s = c.obj(d.get("size"), "policy.size", ("band", "hard_max", "in_band_points", "above_band_points", "below_band_points"))
     band = s.get("band")
@@ -482,8 +486,8 @@ def _parse(raw: dict, source_format: str) -> IcpPolicy:
     strong_req = StrongRequirements(c.boolean(sr, "geography", "policy.strong_requirements"),
                                     c.boolean(sr, "size_in_band", "policy.strong_requirements"),
                                     c.integer(sr, "min_capabilities", "policy.strong_requirements", 0, 40))
-    if strong_req.geography and not geo.countries:
-        c.err("policy.strong_requirements.geography", "cannot require geography when geography.countries is empty")
+    if strong_req.geography and not (geo.countries or geo.exclude_india):
+        c.err("policy.strong_requirements.geography", "cannot require geography without a geography policy")
     if strong_req.min_capabilities > sum(1 for x in target.capabilities if x.counts_for_strong):
         c.err("policy.strong_requirements.min_capabilities", "exceeds the number of capabilities with counts_for_strong")
 
@@ -575,7 +579,7 @@ def summarize(p: IcpPolicy) -> str:
              f"  target type : {t.id} ({t.label})",
              f"  identity    : " + "; ".join(f"{r.claim}[{r.strength},{r.points:+d}]" for r in t.identity),
              f"  capabilities: " + ", ".join(f"{c.id}({c.points:+d})" for c in t.capabilities) + f"  cap={t.capability_cap}",
-             f"  geography   : {list(p.geography.countries) or 'any'}   size band {list(p.size.band)} hard max {p.size.hard_max}",
+             f"  geography   : {list(p.geography.countries) or ('worldwide, excluding India' if p.geography.exclude_india else 'any')}   size band {list(p.size.band)} hard max {p.size.hard_max}",
              f"  exclusions  : " + ", ".join([s.rule for s in p.screens] + [x.id for x in p.type_profiles]),
              f"  tiers       : strong>={p.tiers.strong} possible>={p.tiers.possible}   max possible score {p.max_possible_score()}",
              f"  roles       : {list(p.decision_makers.role_classes)}   drafts enabled: {p.drafts_enabled}"]

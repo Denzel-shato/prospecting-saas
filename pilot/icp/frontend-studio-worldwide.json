@@ -1,0 +1,281 @@
+{
+  "schema_version": 1,
+  "id": "frontend-studio-worldwide-v1",
+  "policy_version": "1.0.0",
+  "name": "Frontend studio -> independent software/product studios worldwide, excluding India",
+  "description": "Independent software development and product studios worldwide, excluding India-based firms, roughly 5–50 staff, with relevant frontend delivery work.",
+  "seller": "Hypothetical freelance/boutique React/Next.js frontend development studio (dashboards, client portals, SaaS interfaces). Not a real business.",
+  "notes": "Geography is worldwide except India. Confirm company base, size and first-party client work before counting a high-fit prospect. Preserve uncertainty when location is missing.",
+  "geography": {
+    "countries": [],
+    "points": 20,
+    "exclude_india": true
+  },
+  "size": {
+    "band": [
+      5,
+      50
+    ],
+    "hard_max": 250,
+    "in_band_points": 15,
+    "above_band_points": -10,
+    "below_band_points": 0
+  },
+  "target_type": {
+    "id": "agency_studio",
+    "label": "client-services agency/studio",
+    "short_label": "agency",
+    "identity": [
+      {
+        "claim": "entity_type:studio_or_agency",
+        "strength": "strong",
+        "points": 20,
+        "rule": "entity_type: studio/agency wording"
+      },
+      {
+        "claim": "entity_type:client_services",
+        "strength": "strong",
+        "points": 12,
+        "rule": "entity_type: builds-for-clients wording (no studio/agency noun)"
+      },
+      {
+        "claim": "entity_type:consulting_engagements",
+        "strength": "weak",
+        "points": 12,
+        "rule": "entity_type: firm's own consulting/client engagements (weak identity)"
+      }
+    ],
+    "identity_missing_unknown": "entity_type: no self-referential studio/agency description found",
+    "identity_missing_reason": "no self-referential studio/agency (or build-for-clients) wording",
+    "capabilities": [
+      {
+        "id": "react",
+        "claim": "service:react",
+        "points": 6
+      },
+      {
+        "id": "nextjs",
+        "claim": "service:nextjs",
+        "points": 6
+      },
+      {
+        "id": "typescript",
+        "claim": "service:typescript",
+        "points": 4
+      },
+      {
+        "id": "frontend",
+        "claim": "service:frontend",
+        "points": 5
+      },
+      {
+        "id": "web_app",
+        "claim": "service:web_app",
+        "points": 5
+      },
+      {
+        "id": "custom_software",
+        "claim": "service:custom_software",
+        "points": 4,
+        "counts_for_strong": false
+      }
+    ],
+    "capability_cap": 25,
+    "min_capabilities": 1,
+    "capability_noun": "services",
+    "capability_rule_prefix": "service: ",
+    "capabilities_missing_unknown": "services: none of the target service terms found",
+    "capabilities_missing_reason": "no target service described as offered to clients",
+    "qualified_reason": "self-described service provider offering target services to clients",
+    "mixed_identity_template": "mixed identity: agency wording alongside vendor/enterprise signals {values}",
+    "gate_cap_note": "US location, technology mentions, size and named people cannot promote an unverified agency identity"
+  },
+  "screens": [
+    {
+      "rule": "staffing_recruiting",
+      "type_id": "staffing",
+      "claim": "negative:staffing_recruiting",
+      "detail": "homepage describes a staffing/recruiting business"
+    }
+  ],
+  "type_profiles": [
+    {
+      "id": "enterprise_software",
+      "claim": "company_type:enterprise_signal",
+      "min_distinct_values": 2,
+      "any_value": [
+        "listed_company"
+      ],
+      "shielded_by_strong_identity": true,
+      "reason_template": "large/listed-corporation signals {values} and no studio/agency self-description"
+    },
+    {
+      "id": "saas_vendor",
+      "claim": "company_type:saas_vendor_signal",
+      "min_distinct_values": 3,
+      "shielded_by_strong_identity": true,
+      "reason_template": "product-vendor signals {values} and no studio/agency self-description",
+      "partial_note_template": "some product-vendor signals {values}"
+    }
+  ],
+  "bonuses": [
+    {
+      "claim": "signal:client_work",
+      "points": 5,
+      "rule": "signal: client-work wording (not purchase intent)",
+      "requires_target_type": true
+    }
+  ],
+  "penalties": [
+    {
+      "claim": "negative:staff_augmentation",
+      "points": -15,
+      "rule": "negative: staff-augmentation model wording"
+    },
+    {
+      "claim": "negative:global_consultancy",
+      "points": -10,
+      "rule": "negative: global-consultancy wording"
+    },
+    {
+      "claim": "negative:staffing_mention",
+      "points": -10,
+      "rule": "negative: staffing wording on secondary page"
+    }
+  ],
+  "decision_makers": {
+    "role_classes": [
+      "founder_ceo",
+      "cto_eng",
+      "other_leader"
+    ],
+    "points": 5
+  },
+  "tiers": {
+    "strong": 65,
+    "possible": 40
+  },
+  "strong_requirements": {
+    "geography": true,
+    "size_in_band": true,
+    "min_capabilities": 2
+  },
+  "prequalify": {
+    "positive_terms": [
+      "agency",
+      "studio",
+      "consultancy",
+      "consulting",
+      "web design",
+      "web development",
+      "software development company",
+      "software development firm",
+      "software development agency",
+      "app development",
+      "custom software",
+      "digital product",
+      "digital design",
+      "digital agency",
+      "outsourc*",
+      "design and development",
+      "development company",
+      "development shop",
+      "development firm"
+    ],
+    "negative_terms": [
+      "platform",
+      "saas",
+      "software as a service",
+      "cloud",
+      "enterprise",
+      "multinational",
+      "search engine",
+      "social network",
+      "social media",
+      "operating system",
+      "database",
+      "cybersecurity",
+      "cyber security",
+      "identity",
+      "video game",
+      "marketplace",
+      "ecommerce",
+      "e-commerce",
+      "fintech",
+      "artificial intelligence",
+      "machine learning"
+    ]
+  },
+  "page_selection": {
+    "relevance_tokens": [
+      "web",
+      "mobile",
+      "app",
+      "apps",
+      "software",
+      "custom",
+      "frontend",
+      "react",
+      "next",
+      "nextjs",
+      "typescript",
+      "saas",
+      "product",
+      "products",
+      "dashboard",
+      "dashboards",
+      "platform",
+      "platforms",
+      "mvp",
+      "portal",
+      "portals",
+      "digital",
+      "technology",
+      "engineering",
+      "development",
+      "ecommerce",
+      "fullstack"
+    ],
+    "extra_segments": {},
+    "slot_order": [
+      "service",
+      "about",
+      "service",
+      "service",
+      "team",
+      "service_other",
+      "work",
+      "contact",
+      "detail"
+    ],
+    "service_slug": {
+      "core_words": [
+        "development",
+        "engineering"
+      ],
+      "extra_core_words": [
+        "developer",
+        "developers",
+        "programming"
+      ],
+      "provider_words": [
+        "agency",
+        "agencies",
+        "company",
+        "studio",
+        "services",
+        "consultancy",
+        "consultants",
+        "firm",
+        "experts",
+        "partner",
+        "partners",
+        "outsourcing",
+        "shop"
+      ]
+    }
+  },
+  "drafts": {
+    "enabled": true
+  }
+}

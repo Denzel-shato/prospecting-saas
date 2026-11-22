@@ -198,7 +198,7 @@ def main(argv: list[str] | None = None) -> int:
             if a.manual_csv and "manual_csv" not in names:
                 names.append("manual_csv")
             adapters = build_adapters(names, client=ApiClient(), ack_overpass_terms=a.ack_overpass_terms,
-                                      manual_csv=a.manual_csv)
+                                      manual_csv=a.manual_csv, worldwide=a.policy.geography.exclude_india)
             fetcher = PoliteFetcher(min_delay=a.min_delay)
             cfg = RunConfig(icp=a.policy, out_dir=Path(a.out), mode="live",
                             max_candidates=a.max_candidates, seed=a.seed)

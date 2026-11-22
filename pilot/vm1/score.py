@@ -203,6 +203,19 @@ def qualify_company(
         exclude(f"size_over_{pol.size.hard_max}", size_ev, f"explicit count {size} exceeds hard max {pol.size.hard_max}")
 
     us: list[Evidence] = []
+    worldwide_location: list[Evidence] = []
+    if pol.geography.exclude_india:
+        from .evidence import INDIA_LOCATION_RE
+
+        india = _ok(evidence, "location:india_hq")
+        if india:
+            exclude("india_hq", india, "first-party evidence indicates an India base or headquarters")
+        else:
+            # An Indian office alone does not establish an Indian headquarters.
+            other = _ok(evidence, "location:non_us")
+            worldwide_location = _ok(evidence, "location:us") + [
+                item for item in other if not INDIA_LOCATION_RE.search(str(item.value))
+            ]
     if pol.geography.countries:
         us = _ok(evidence, "location:us")
         non_us = _ok(evidence, "location:non_us")
@@ -262,6 +275,14 @@ def qualify_company(
             res.unknowns.append("location: US presence not evidenced")
             crit("geography", "unknown", "US presence not evidenced")
 
+    if pol.geography.exclude_india:
+        if worldwide_location:
+            add("location: supported outside India", pol.geography.points, worldwide_location)
+            crit("geography", "met", "location outside India supported", _ids(worldwide_location))
+        else:
+            res.unknowns.append("location: base outside India not evidenced")
+            crit("geography", "unknown", "base outside India not evidenced")
+
     # ---- size ----------------------------------------------------------------------------------------------------
     if isinstance(size, int):
         if lo <= size <= hi:
@@ -314,8 +335,9 @@ def qualify_company(
             sr = pol.strong_requirements
             offered = sum(1 for c in t.capabilities if c.counts_for_strong and _ok(evidence, c.claim))
             missing = []
-            if sr.geography and not us:
-                missing.append("US presence not evidenced")
+            if sr.geography and not (us or worldwide_location):
+                missing.append("base outside India not evidenced" if pol.geography.exclude_india
+                               else "US presence not evidenced")
             if sr.size_in_band and not (isinstance(size, int) and lo <= size <= hi):
                 missing.append("no explicit in-band headcount")
             if offered < sr.min_capabilities:

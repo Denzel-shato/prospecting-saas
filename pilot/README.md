@@ -101,3 +101,13 @@ python3 -m vm1 run --icp icp/frontend-studio.json --sources drupal_org --max-can
 For a mixed candidate pool, use `--sources drupal_org,wikidata`. The first source listed retains provenance when the same canonical domain appears in both. Drupal is most relevant to the studio profile. Label eligible companies against the same high-fit criteria before comparing yield.
 
 The first probe retrieved 200 directory records. The adapter extracted 31 distinct candidate domains, six with frontend or headless hints. These are pre-crawl counts. The live pilot in the development workspace could not resolve the API host through VM1's direct transport, so end-to-end qualification and weekly yield remain unmeasured.
+
+### Worldwide studio campaign
+
+Use `icp/frontend-studio-worldwide.json` for studios in any market except India. The original US policy remains available for prior benchmarks. Drupal and Wikidata take their geographic scope from the selected policy. Drupal screens directory headquarters for India and Wikidata excludes explicit India country or headquarters statements. Directory hints still do not establish first-party fit. Explicit India-base evidence on a company site excludes it, while an India office alone does not establish its base. First-party location parsing is partial. Verify the company's operating base outside India before marking it strong in the weekly queue.
+
+```sh
+python3 -m vm1 run --icp icp/frontend-studio-worldwide.json --sources drupal_org,wikidata --max-candidates 40
+```
+
+Keep runs from each geography policy in separate weekly review queues.

@@ -49,6 +49,7 @@ CLAIM_TYPES: dict[str, str] = {
     "capability:customer_intake": "first-party scheduling/booking/quote-request wording",
     # location and size
     "location:us": "US address/location statement or dataset record",
+    "location:india_hq": "explicit first-party India headquarters or base",
     "location:non_us": "non-US place or postcode statement (detection is partial)",
     "size:employees": "explicit self-referential headcount (unknown when conflicting)",
     # negatives and informational signals

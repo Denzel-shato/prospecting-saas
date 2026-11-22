@@ -64,6 +64,14 @@ US_BASED_RE = re.compile(
 US_COUNTRY_RE = re.compile(r"\b(?:United States|U\.S\.A\.?|USA)\b")
 US_COUNTRY_CONTEXT_RE = re.compile(r"\b(?:based|headquarter\w*|located|offices?|address)\b", re.I)
 
+INDIA_LOCATION_RE = re.compile(
+    r"\b(?:India|Bangalore|Bengaluru|Pune|Hyderabad|Mumbai|New Delhi|Delhi|Ahmedabad|Noida|"
+    r"Gurugram|Gurgaon|Chennai|Kolkata|Chandigarh|Jaipur|Indore|Surat|Kochi|Coimbatore)\b", re.I)
+INDIA_BASE_RE = re.compile(
+    r"\b(?:(?:we(?:['’]re| are)|(?:our|the) (?:company|team|agency|studio|firm) (?:is|are)) "
+    r"(?:based|headquartered)|(?:our |company |global |corporate )?headquarters(?:\s+(?:is|are))?)"
+    r"\s*(?:in\s+|[:–—]\s*)?" + INDIA_LOCATION_RE.pattern, re.I)
+
 NON_US_PLACES = (
     "United Kingdom|UK|England|Scotland|Wales|London|Manchester|Canada|Toronto|Vancouver|Montreal|"
     "Australia|Sydney|Melbourne|India|Bangalore|Bengaluru|Pune|Hyderabad|Germany|Berlin|Poland|"
@@ -687,6 +695,16 @@ def extract_evidence(company_key: str, snaps: list[PageSnapshot],
         value = m.group(1) if m.groups() else m.group(0)
         out.append(_ev(company_key, "location:non_us", value, snap, text, m,
                        "non-US place/postcode statement (detection is partial)"))
+
+    for snap in snaps:
+        hit = next(((text, match) for text, _, kind, ctx, third_party in _items(snap)
+                    if not (third_party or ctx & UNRELIABLE_CTX or kind in NON_SELF_KINDS)
+                    if (match := INDIA_BASE_RE.search(text))), None)
+        if hit:
+            text, match = hit
+            out.append(_ev(company_key, "location:india_hq", "IN", snap, text, match,
+                           "first-party statement naming an Indian base or headquarters"))
+            break
 
     # explicit, self-referential team size; ranges/history/third-party/conflicts => unknown
     size_ev = _size_evidence(company_key, snaps, company_name)

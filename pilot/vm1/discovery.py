@@ -119,21 +119,25 @@ class WikidataAdapter(Adapter):
     SPARQL = "https://query.wikidata.org/sparql"
     CLASS_SOFTWARE_COMPANY = "Q1058914"
     COUNTRY_US = "Q30"
+    COUNTRY_INDIA = "Q668"
     terms_note = ("Wikidata Query Service: keyless; send a descriptive User-Agent; keep queries "
                   "narrow; back off on 429. Data is CC0.")
     license_note = "CC0 (Wikidata)"
 
-    def __init__(self, client: ApiClient, limit: int = 500):
+    def __init__(self, client: ApiClient, limit: int = 500, *, worldwide: bool = False):
         require_zero_cost(self.name, self.cost_class)
         self.client = client
         self.limit = limit
+        self.worldwide = worldwide
 
     def _get(self, query: str) -> dict:
         url = f"{self.SPARQL}?{urlencode({'query': query, 'format': 'json'})}"
         return self.client.request_json("GET", url, accept="application/sparql-results+json")
 
     def _verify_ids(self) -> None:
-        q = (f"SELECT ?q ?l WHERE {{ VALUES ?q {{ wd:{self.CLASS_SOFTWARE_COMPANY} wd:{self.COUNTRY_US} }} "
+        country = self.COUNTRY_INDIA if self.worldwide else self.COUNTRY_US
+        expected = "india" if self.worldwide else "united states"
+        q = (f"SELECT ?q ?l WHERE {{ VALUES ?q {{ wd:{self.CLASS_SOFTWARE_COMPANY} wd:{country} }} "
              f"?q rdfs:label ?l . FILTER(LANG(?l)=\"en\") }}")
         rows = self._get(q).get("results", {}).get("bindings", [])
         labels = {r["q"]["value"].rsplit("/", 1)[-1]: r["l"]["value"].lower() for r in rows}
@@ -141,16 +145,20 @@ class WikidataAdapter(Adapter):
             raise DiscoveryBlocked(
                 f"wikidata ID check failed: {self.CLASS_SOFTWARE_COMPANY} label="
                 f"{labels.get(self.CLASS_SOFTWARE_COMPANY)!r}, expected 'software company'")
-        if not labels.get(self.COUNTRY_US, "").startswith("united states"):
-            raise DiscoveryBlocked(
-                f"wikidata ID check failed: {self.COUNTRY_US} label={labels.get(self.COUNTRY_US)!r}")
+        if not labels.get(country, "").startswith(expected):
+            raise DiscoveryBlocked(f"wikidata ID check failed: {country} label={labels.get(country)!r}")
 
     def build_query(self, enriched: bool = True) -> str:
+        geography = (f"""FILTER NOT EXISTS {{ ?item wdt:P17 wd:{self.COUNTRY_INDIA} . }}
+  FILTER NOT EXISTS {{ ?item wdt:P159/wdt:P17 wd:{self.COUNTRY_INDIA} . }}"""
+                     if self.worldwide else
+                     f"{{ ?item wdt:P17 wd:{self.COUNTRY_US} }} UNION "
+                     f"{{ ?item wdt:P159/wdt:P17 wd:{self.COUNTRY_US} }}")
         if not enriched:
             # Original (live-proven in run 20261121T150320Z-live) query: used only as a fallback.
             return f"""SELECT ?item ?itemLabel ?website ?employees WHERE {{
   ?item wdt:P31 wd:{self.CLASS_SOFTWARE_COMPANY} .
-  {{ ?item wdt:P17 wd:{self.COUNTRY_US} }} UNION {{ ?item wdt:P159/wdt:P17 wd:{self.COUNTRY_US} }}
+  {geography}
   ?item wdt:P856 ?website .
   OPTIONAL {{ ?item wdt:P1128 ?employees . }}
   SERVICE wikibase:label {{ bd:serviceParam wikibase:language "en". }}
@@ -161,7 +169,7 @@ class WikidataAdapter(Adapter):
         # NOT yet live-verified: if the service rejects it (HTTP 400) discover() falls back, visibly.
         return f"""SELECT ?item ?itemLabel ?website ?employees ?desc ?listed WHERE {{
   ?item wdt:P31 wd:{self.CLASS_SOFTWARE_COMPANY} .
-  {{ ?item wdt:P17 wd:{self.COUNTRY_US} }} UNION {{ ?item wdt:P159/wdt:P17 wd:{self.COUNTRY_US} }}
+  {geography}
   ?item wdt:P856 ?website .
   OPTIONAL {{ ?item wdt:P1128 ?employees . }}
   OPTIONAL {{ ?item schema:description ?desc . FILTER(LANG(?desc) = "en") }}
@@ -178,7 +186,7 @@ class WikidataAdapter(Adapter):
                 site = row["website"]["value"]
             except KeyError:
                 continue
-            attrs: dict = {"country": "US"}
+            attrs: dict = {} if self.worldwide else {"country": "US"}
             emp = row.get("employees", {}).get("value")
             if emp and emp.isdigit():
                 attrs["employees"] = int(emp)
@@ -221,14 +229,15 @@ class DrupalOrgAdapter(Adapter):
         r"\b(?:agency|studio|consulting|consultancy|development services|we (?:build|develop|design))\b", re.I)
     _FRONTEND = re.compile(r"\b(?:React|Next\.?js|TypeScript|headless|decoupled)\b", re.I)
 
-    def __init__(self, client: ApiClient):
+    def __init__(self, client: ApiClient, *, worldwide: bool = False):
         require_zero_cost(self.name, self.cost_class)
         self.client = client
+        self.worldwide = worldwide
         self.run_note = ""
 
     def discover(self) -> list[Candidate]:
         # Reuse the first-party geography patterns as directory screening hints only.
-        from .evidence import NON_US_RE, US_ADDRESS_RE, US_BASED_RE, US_COUNTRY_RE
+        from .evidence import INDIA_LOCATION_RE, NON_US_RE, US_ADDRESS_RE, US_BASED_RE, US_COUNTRY_RE
 
         found = {}
         records = 0
@@ -248,15 +257,20 @@ class DrupalOrgAdapter(Adapter):
                 link = row.get("field_link")
                 body = row.get("body")
                 name, node_id = row.get("title"), row.get("nid")
-                if not all(isinstance(value, str) and value.strip() for value in (location, name, node_id)):
+                if not all(isinstance(value, str) and value.strip() for value in (name, node_id)):
                     continue
                 if not node_id.isascii() or not node_id.isdecimal():
                     continue
-                if not (US_COUNTRY_RE.search(location) or location.strip() == "US"
-                        or US_ADDRESS_RE.search(location) or US_BASED_RE.search(f"based in {location}")):
-                    continue
-                if NON_US_RE.search(f"based in {location}") and not US_COUNTRY_RE.search(location):
-                    continue
+                location = location if isinstance(location, str) else ""
+                if self.worldwide:
+                    if INDIA_LOCATION_RE.search(location) or location.strip().upper() == "IN":
+                        continue
+                else:
+                    has_us_hint = (US_COUNTRY_RE.search(location) or location.strip() == "US"
+                                   or US_ADDRESS_RE.search(location) or US_BASED_RE.search(f"based in {location}"))
+                    if not has_us_hint or (NON_US_RE.search(f"based in {location}")
+                                           and not US_COUNTRY_RE.search(location)):
+                        continue
                 url = link.get("url") if isinstance(link, dict) else None
                 if not isinstance(url, str) or not url.strip().lower().startswith(("https://", "http://")):
                     continue
@@ -280,8 +294,9 @@ class DrupalOrgAdapter(Adapter):
                 found.setdefault(domain, candidate)
             if not data.get("next") or not rows:
                 break
+        screen = "no Indian headquarters in the listing" if self.worldwide else "US location hints"
         self.run_note = (f"{records} directory records screened; {len(found)} distinct candidate domains "
-                         "with US location and client-services wording in directory profiles")
+                         f"with client-services wording and {screen}")
         return list(found.values())
 
 
@@ -386,7 +401,7 @@ KEYLESS_REGISTRY = {"drupal_org", "wikidata", "openstreetmap", "manual_csv", "sy
 def build_adapters(names: list[str], *, client: ApiClient | None = None,
                    ack_overpass_terms: bool = False, manual_csv: str | None = None,
                    synthetic_world: str | None = None,
-                   wikidata_limit: int = 500) -> list[Adapter]:
+                   wikidata_limit: int = 500, worldwide: bool = False) -> list[Adapter]:
     """Build adapters by name. Unknown/paid/keyed names fail closed."""
     adapters: list[Adapter] = []
     for raw in names:
@@ -399,9 +414,9 @@ def build_adapters(names: list[str], *, client: ApiClient | None = None,
                 f"({sorted(KEYLESS_REGISTRY)}). Paid/keyed providers (Exa, Tavily, Brave, Hunter, "
                 f"Apollo, ...) are blocked in the $0 pilot.")
         if n == "wikidata":
-            adapters.append(WikidataAdapter(client or ApiClient(), limit=wikidata_limit))
+            adapters.append(WikidataAdapter(client or ApiClient(), limit=wikidata_limit, worldwide=worldwide))
         elif n == "drupal_org":
-            adapters.append(DrupalOrgAdapter(client or ApiClient()))
+            adapters.append(DrupalOrgAdapter(client or ApiClient(), worldwide=worldwide))
         elif n == "openstreetmap":
             adapters.append(OverpassAdapter(client or ApiClient(), acknowledged=ack_overpass_terms))
         elif n == "manual_csv":
