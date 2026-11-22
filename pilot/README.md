@@ -4,6 +4,26 @@ Scope: one ICP (`icp/frontend-studio.json`), discovery from the ICP alone, own-s
 scoring, publicly named decision-makers, **unsent** drafts. No Gmail, no sending, no paid APIs, no Phase 1.
 Python 3.11+, **standard library only** (no installs).
 
+## Current Issue #5 branch (2026-11-22)
+
+The configurable ICP foundation is implemented on `vm1-pilot-issue5-icp-foundation`, not merged into `main`.
+GitHub Actions confirmed **211 offline tests passed**, plus all three policy JSON files validated and a
+fictional synthetic pipeline run succeeded. The test results prove local code paths, **not live lead relevance**.
+The earlier independent studio-pilot quality result remains 5/18 (28%) human-labelled top-20 relevance.
+
+### New commands
+
+    python3 -m vm1 validate-icp icp/frontend-studio.json
+    python3 -m vm1 validate-icp icp/ai-automation-service-businesses.json
+    python3 -m vm1 validate-icp icp/ecommerce-marketing-agency.json
+    python3 -m vm1 requalify --from-run runs/<old-run-id> --icp icp/ecommerce-marketing-agency.json --out runs
+
+The `requalify` command makes **no network requests**, regenerates no drafts, uses only previously stored
+verified evidence, and labels its output as **not fresh discovery**. Historical source evidence may not cover
+all claims needed by a different ICP. All policies remain illustrative until human-validated live runs exist.
+See `../docs/ICP-FOUNDATION.md` for the schema, limitations, and instructions for adding another industry.
+Snapshots and live runs stay local and git-ignored.
+
 ## Reproduce
     cd pilot
     python3 -m unittest discover -s tests -t .          # 165 tests, offline
