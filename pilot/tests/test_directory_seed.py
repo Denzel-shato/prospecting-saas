@@ -35,12 +35,13 @@ def write(tmp: str, name: str, text: str) -> Path:
 
 
 class CatalogTests(unittest.TestCase):
-    def test_real_catalog_has_19_sources_and_no_automated_directory(self):
+    def test_real_catalog_has_20_sources_and_no_automated_directory(self):
         raw = json.loads(ds.DEFAULT_CATALOG.read_text(encoding="utf-8"))
-        self.assertEqual(len(raw["existing_automated_sources"]), 3)
+        self.assertEqual(len(raw["existing_automated_sources"]), 4)
+        self.assertIn("pickanagency", {s["id"] for s in raw["existing_automated_sources"]})
         catalog = ds.load_catalog()
         self.assertEqual(len(catalog), 16)
-        self.assertEqual(len(raw["existing_automated_sources"]) + len(catalog), 19)
+        self.assertEqual(len(raw["existing_automated_sources"]) + len(catalog), 20)
         self.assertEqual(ds.AUTOMATED_DIRECTORY_ADAPTERS, {})
         for src in catalog.values():
             self.assertEqual((src.mode, src.automated_adapter, src.automated_access_verified),
