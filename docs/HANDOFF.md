@@ -112,3 +112,39 @@ the user's Mac. Next: run the commands in `docs/ISSUE-4.1-REPORT.md`, compare ag
 
 ## 2026-11-22 checkpoint
 Issue #5 (configurable ICP foundation) is STARTED, NOT COMPLETE, on `vm1-pilot-issue5-icp-foundation`. Read `docs/ACCOUNT-HANDOFF.md` first; it lists what exists and the ordered remaining work.
+
+
+## Issue #5 implementation checkpoint — 2026-11-22
+
+**Branch:** vm1-pilot-issue5-icp-foundation, based on the earlier partial checkpoint b42227e. This branch has NOT been merged to main. The original Issue #4.1 branch remains unchanged.
+
+**Completed in this session:**
+- Policy-aware discovery prequalification, candidate selection and descriptive coverage; baseline legacy behaviour checked against frozen implementation.
+- Validated active ICP now propagates through the entire pipeline: page selection, size/geography/type scoring, exclusion gates, target roles, historical draft eligibility and manifest policy version/digest.
+- Capture and replay accept the active policy; capture continues using the existing network restrictions and replay never accesses the network.
+- Added offline validate-icp and requalify CLI commands. Requalification uses stored evidence only, produces no drafts, makes no network calls, records original run provenance, and is explicitly NOT fresh research or an independent quality measurement.
+- Added two **fictional** industry policies: automation consultancy targeting local/professional service businesses, and marketing agency targeting ecommerce storefronts. Draft generation DISABLED for both.
+- Extended reports with ICP-relative discovery coverage, policy ID/version/digest and evidence-cited criterion descriptions. Added requalification notices.
+- Added cross-ICP, offline requalification, baseline scorer and prequalification tests.
+- Added GitHub Actions workflow .github/workflows/vm1-tests.yml for offline tests, policy validation and fictional synthetic pipeline, triggered by Issue #5 branch pushes; no paid APIs or external scraping.
+
+**Test evidence:** The user's Mac passed 201 tests following initial integration. GitHub Actions run 45001430418 on commit 10fbcb5 later reported **211 tests in 0.596 seconds, OK**, all 3 example policy validations passed, and the fictional synthetic pipeline succeeded. Documentation-only revisions do not alter behavior. Verify newest branch head and subsequent CI run before treating later changes as tested.
+
+**What these tests do NOT prove:** 28% (5/18) remains the independent live top-20 relevance reference. Neither synthetic tests nor offline replay prove lead precision, decision-maker accuracy across industries, compliant source availability, or positive buying intent. Real matched company identification still needs permitted discovery plus independent human labels. Incomplete extraction for another ICP must remain unknown, never guessed.
+
+**Important source links:** docs/ICP-FOUNDATION.md (schema, usage, limitations), docs/ACCOUNT-HANDOFF.md (historical checkpoint; superseded by this entry for Issue #5 status), docs/ISSUE-4.1-REPORT.md (capture/replay behavior).
+
+**Next Mac validation (without a full crawl):**
+
+    cd ~/prospecting-saas
+    git fetch origin && git switch vm1-pilot-issue5-icp-foundation
+    git pull --ff-only origin vm1-pilot-issue5-icp-foundation
+    cd pilot
+    python3 -m unittest discover -s tests -t .
+    python3 -m vm1 validate-icp icp/ai-automation-service-businesses.json
+    python3 -m vm1 validate-icp icp/ecommerce-marketing-agency.json
+    python3 -m vm1 requalify --from-run runs/20261122T065358Z-replay --icp icp/ecommerce-marketing-agency.json --out runs
+
+The old 6-company replay is ONLY on the user's Mac and its data may not include ecommerce signals. Zero matches under another ICP is therefore not a live relevance conclusion.
+
+**Remaining milestone / decisions:** Do not add frontend SaaS, Gmail/sending, paid data, billing or auth without a separate milestone authorization. First validate the code against the user's real snapshots, inspect extraction quality and source coverage for other industries, and expand independent human labeling. Some requested tests (complete randomized differential across all old/new components, independent policy-invariant extraction with factual fixtures) can still be strengthened before treating Issue #5 as fully audited. There is no company-specific hack for Epic/Telos/Velvet, and no claim of live improvements.
