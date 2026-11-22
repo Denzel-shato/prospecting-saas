@@ -26,13 +26,14 @@ from .prequalify import coverage, order_pool
 from .htmlparse import PageData, parse_html
 from .people import find_decision_makers
 from .score import EXCLUDED, NOT_RESEARCHABLE, score_company
+from .policy import IcpPolicy, load_policy
 
 _ASSET_RE = re.compile(r"\.(pdf|jpe?g|png|gif|svg|webp|zip|mp4|mov|docx?|xlsx?|pptx?)$", re.I)
 
 
 @dataclass
 class RunConfig:
-    icp: dict
+    icp: dict | IcpPolicy
     out_dir: Path
     mode: str = "live"  # live | synthetic_fixture
     max_candidates: int = 40
@@ -85,11 +86,12 @@ def dedup(candidates: list[Candidate]) -> tuple[list[Candidate], list[dict], lis
     return list(kept.values()), rejected, possible_same
 
 
-def select_with_reasons(pool: list[Candidate], max_candidates: int, seed: str) -> tuple[list[Candidate], dict]:
+def select_with_reasons(pool: list[Candidate], max_candidates: int, seed: str,
+                        policy: IcpPolicy | None = None) -> tuple[list[Candidate], dict]:
     """Deterministic selection. Candidates are ordered by (record-based prequalification priority,
     seeded hash). With no usable record fields every priority is 0 and the order is the original
     seeded-hash order. Nothing is dropped for being low priority unless the cap is reached."""
-    rows = order_pool(pool, seed)
+    rows = order_pool(pool, seed, policy)
     chosen = rows if len(pool) <= max_candidates else rows[:max_candidates]
     info = {c.domain: {"priority": pri, "reasons": why} for c, pri, why in chosen if pri or why}
     return [c for c, _, _ in chosen], info
@@ -99,7 +101,9 @@ def select(pool: list[Candidate], max_candidates: int, seed: str) -> list[Candid
     return select_with_reasons(pool, max_candidates, seed)[0]
 
 
-def research_company(cand: Candidate, fetcher: PoliteFetcher, icp: dict, max_secondary: int) -> dict:
+def research_company(cand: Candidate, fetcher: PoliteFetcher,
+                     icp: dict | IcpPolicy, max_secondary: int) -> dict:
+    policy = load_policy(icp)
     key = cand.domain or cand.url
     rec: dict = {
         "domain": key, "name": cand.name, "url": cand.url,
@@ -120,8 +124,8 @@ def research_company(cand: Candidate, fetcher: PoliteFetcher, icp: dict, max_sec
         page = parse_html(res.text or "", url)
         snaps.append(PageSnapshot(url=url, fetched_at=res.fetched_at, page=page, is_homepage=True))
         pages_by_url[url] = page
-        ranked_sel = rank_candidates(page.links, url)
-        chosen = plan_selection(ranked_sel, max_secondary)
+        ranked_sel = rank_candidates(page.links, url, policy.page_selection)
+        chosen = plan_selection(ranked_sel, max_secondary, policy.page_selection)
         picks = [c.url for c in chosen]
         by_url = {c.url: c for c in chosen}
         rec["secondary_links_found"] = len(picks)
@@ -167,11 +171,9 @@ def research_company(cand: Candidate, fetcher: PoliteFetcher, icp: dict, max_sec
     # fetched (timeout, 5xx, network) is an ordinary reachability failure, not a policy refusal.
     robots_blocked = (not res.ok) and (res.error or "").startswith(
         ("robots: disallowed", "robots: crawl_delay"))
-    band = tuple(icp.get("size_band", (5, 50)))
     score = score_company(
         verified, dms, homepage_ok=res.ok, robots_blocked=robots_blocked,
-        first_party_domain=is_first_party_candidate(cand.domain), size_band=band,  # type: ignore[arg-type]
-        size_hard_max=icp.get("size_hard_max", 250))
+        first_party_domain=is_first_party_candidate(cand.domain), policy=policy)
 
     rec.update({"evidence": [e.to_dict() for e in verified], "dropped_unverifiable_evidence": dropped,
                 "verified_evidence_ids": sorted(verified_ids),
@@ -188,6 +190,7 @@ def rank(companies: list[dict]) -> list[dict]:
 def run_pipeline(cfg: RunConfig, adapters: list[Adapter], fetcher: PoliteFetcher,
                  ledger: SpendLedger | None = None) -> dict:
     ledger = ledger or SpendLedger()
+    policy = load_policy(cfg.icp)  # fail closed on invalid/non-baseline ICPs before discovery or HTTP
     t0 = time.monotonic()
     started = _now()
     stage: dict[str, float] = {}
@@ -216,11 +219,11 @@ def run_pipeline(cfg: RunConfig, adapters: list[Adapter], fetcher: PoliteFetcher
 
     # 2. canonicalize / dedup / select
     pool, rejected, possible_same = dedup(discovered)
-    selected, selection_info = select_with_reasons(pool, cfg.max_candidates, cfg.seed)
+    selected, selection_info = select_with_reasons(pool, cfg.max_candidates, cfg.seed, policy)
 
     # 3. research
     t = time.monotonic()
-    companies = [research_company(c, fetcher, cfg.icp, cfg.max_secondary) for c in selected]
+    companies = [research_company(c, fetcher, policy, cfg.max_secondary) for c in selected]
     stage["research_s"] = round(time.monotonic() - t, 2)
 
     # 4. rank + drafts
@@ -229,7 +232,7 @@ def run_pipeline(cfg: RunConfig, adapters: list[Adapter], fetcher: PoliteFetcher
     drafts = []
     cand_by_domain = {c.domain: c for c in selected}
     for c in ranked:
-        if len(drafts) >= cfg.draft_count:
+        if not policy.drafts_enabled or len(drafts) >= cfg.draft_count:
             break
         if c["tier"] not in ("strong", "possible"):
             continue
@@ -248,7 +251,8 @@ def run_pipeline(cfg: RunConfig, adapters: list[Adapter], fetcher: PoliteFetcher
         "run_id": run_id, "mode": cfg.mode, "started_at": started, "ended_at": _now(),
         "elapsed_s": round(time.monotonic() - t0, 2), "stage_elapsed_s": stage,
         "version": __version__, "python": platform.python_version(), "user_agent": USER_AGENT,
-        "icp_id": cfg.icp.get("id"), "seed": cfg.seed, "max_candidates": cfg.max_candidates,
+        "icp_id": policy.id, "policy_version": policy.policy_version, "policy_digest": policy.digest,
+        "policy_source_format": policy.source_format, "seed": cfg.seed, "max_candidates": cfg.max_candidates,
         "discovery_status": discovery_status,
         "counts": {"discovered_raw": len(discovered), "after_dedup_pool": len(pool),
                    "rejected": len(rejected), "selected": len(selected),
@@ -261,7 +265,7 @@ def run_pipeline(cfg: RunConfig, adapters: list[Adapter], fetcher: PoliteFetcher
         "credentials_detected_in_env_but_ignored": credentials_present(),
         "selection_method": "prequalify priority (record description/listing/headcount) then seeded hash",
         "selection_priorities": selection_info,
-        "discovery_coverage": coverage(pool),
+        "discovery_coverage": coverage(pool, policy),
         "possible_same_company_different_domain": possible_same,
         "sending": "none: this prototype contains no email/Gmail/SMTP code path",
     }
