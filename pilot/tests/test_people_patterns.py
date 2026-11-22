@@ -67,6 +67,11 @@ class WrongCompanyAndTestimonials(unittest.TestCase):
         self.assertEqual([d.name for d in got], ["John Example"])
 
 
+class NonPersonLabels(unittest.TestCase):
+    def test_level_ownership_not_a_person(self):
+        self.assertEqual(dms("<h2>Our Team</h2><p>Level Ownership, Founder</p>"), [])
+        self.assertEqual(dms("<h2>Our Team</h2><p>Founder</p><p>Level Ownership</p>"), [])
+
 class MissingStaysMissing(unittest.TestCase):
     def test_role_without_company_tie_is_unknown(self):
         self.assertEqual(dms("<p>Jane Doe is the founder.</p>", url=HOME, home=True), [])  # homepage, no org
