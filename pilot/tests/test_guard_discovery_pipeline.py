@@ -195,5 +195,23 @@ class SyntheticPipelineTests(unittest.TestCase):
         self.assertEqual(a, b)
 
 
+
+class DiscoveryReportTests(unittest.TestCase):
+    def test_manual_run_is_reported_as_qualification_only(self):
+        from vm1.report import verdict
+
+        manifest = {"mode": "live", "counts": {"selected_manual": 10, "selected_automated": 0},
+                    "discovery_status": [{"adapter": "manual_csv"}]}
+        self.assertIn("MANUAL QUALIFICATION RUN", verdict({"manifest": manifest}, {})[0])
+
+    def test_mixed_run_still_reports_an_autonomous_shortfall(self):
+        from vm1.report import verdict
+
+        manifest = {"mode": "live", "counts": {"selected_manual": 10, "selected_automated": 0,
+                                                 "raw_automated": 0},
+                    "discovery_status": [{"adapter": "manual_csv"}, {"adapter": "wikidata"}]}
+        self.assertIn("NO-GO", verdict({"manifest": manifest}, {})[0])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -119,6 +119,10 @@ def verdict(run: dict, m: dict) -> list[str]:
     if man["mode"] == "synthetic_fixture":
         return ["**NOT A FINDING.** This run used FICTIONAL synthetic fixtures to exercise the pipeline. "
                 "It says nothing about real discovery quality, real companies, or ICP fit."]
+    sources = {source["adapter"] for source in man.get("discovery_status", [])}
+    if sources == {"manual_csv"}:
+        return [f"**MANUAL QUALIFICATION RUN.** Evaluated {c['selected_manual']} manually supplied candidates. "
+                "Autonomous discovery was outside this run's scope."]
     lines = []
     auto = c["selected_automated"]
     if auto < 30:
@@ -196,8 +200,7 @@ def render_report(run: dict, m: dict) -> str:
             L.append(f"- discovery-record coverage of the pool ({cov['pool']}): description present "
                      f"{cov['with_record_description']}, agency-like description {cov['agency_like_description']}, "
                      f"vendor-like description {cov['vendor_like_description']}, listed on an exchange "
-                     f"{cov['listed_on_exchange']}. A low agency-like count means this source cannot supply "
-                     f"{man['max_candidates']} relevant agencies.")
+                     f"{cov['listed_on_exchange']}. Description matches are unverified discovery hints.")
         else:
             L.append(f"- ICP-relative discovery-record coverage of the pool ({cov['pool']}): description present "
                      f"{cov['with_record_description']}, target-like description {cov.get('target_like_description', 0)}, "
