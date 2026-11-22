@@ -67,3 +67,21 @@ Preserve and human-label the baseline before another live run. On a Mac with Hom
 
 ## Known limits
 Scoring thresholds are uncalibrated starting points. Non-US detection is partial. Page statements are attribution, not truth.
+
+## Weekly prospect review
+
+Use completed live runs from one ICP to build a review queue. Run manual CSV intake separately for each source you want to compare. Each intake CSV uses the existing `name,url` format. Set the run's candidate cap to cover its input batch.
+
+```sh
+python3 -m vm1.weekly \
+  --batch vercel runs/<vercel-run-id> \
+  --batch targeted-search runs/<search-run-id> \
+  --history weekly/<previous-week>/review.csv \
+  --out weekly/<current-week>
+```
+
+Omit `--history` for the first week. Repeat it for every previous review file you want counted. The queue deduplicates canonical domains across current batches and previous skips or fully verified contacts. The first current batch containing a domain gets source credit. Earlier unresolved prospects can appear again.
+
+Edit `review.csv` with `contact`, `skip`, or `needs_research` and record the reason. For contacts, confirm the person's name and role on the company's own site and fill in `verified_person`, `verified_role`, `verified_person_url`, and `outreach_angle`. Suggestions and cited service evidence appear alongside the review fields. Weak candidates remain visible for review.
+
+Run the same weekly command again to preserve the edits and regenerate `ready.csv` and `summary.json`. The summary shows per-source volume, review decisions, ready contacts, and progress toward 150–200 ready contacts per week. Source throughput must be measured in real batches to establish whether that target is achievable. The command works offline from existing run artifacts and exports a queue for manual outreach.

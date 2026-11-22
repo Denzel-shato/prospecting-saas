@@ -5,3 +5,6 @@ __pycache__/
 *.env
 # never commit real prospect data, labels with names, or credentials
 labels.csv
+
+# Weekly review queues and prospect data
+weekly/
