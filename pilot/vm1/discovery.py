@@ -57,7 +57,7 @@ class Candidate:
 class ApiClient:
     """Tiny SSRF-safe JSON client for fixed keyless discovery hosts."""
 
-    ALLOWED_HOSTS = {"query.wikidata.org", "overpass-api.de", "www.drupal.org"}
+    ALLOWED_HOSTS = {"query.wikidata.org", "overpass-api.de", "www.drupal.org", "www.pickanagency.com"}
 
     def __init__(self, transport: Transport | None = None, resolver: Resolver | None = None,
                  timeout: float = 90.0, max_bytes: int = 25_000_000):
@@ -427,7 +427,7 @@ class SyntheticFixtureAdapter(Adapter):
                 for c in self.world["candidates"]]
 
 
-KEYLESS_REGISTRY = {"drupal_org", "wikidata", "openstreetmap", "manual_csv", "directory_seed", "synthetic"}
+KEYLESS_REGISTRY = {"drupal_org", "wikidata", "openstreetmap", "pickanagency", "manual_csv", "directory_seed", "synthetic"}
 
 
 def build_adapters(names: list[str], *, client: ApiClient | None = None,
@@ -457,6 +457,9 @@ def build_adapters(names: list[str], *, client: ApiClient | None = None,
             adapters.append(DrupalOrgAdapter(client or ApiClient(), worldwide=worldwide))
         elif n == "openstreetmap":
             adapters.append(OverpassAdapter(client or ApiClient(), acknowledged=ack_overpass_terms))
+        elif n == "pickanagency":
+            from .pickanagency import PickAnAgencyAdapter
+            adapters.append(PickAnAgencyAdapter(client or ApiClient(), worldwide=worldwide))
         elif n == "manual_csv":
             if not manual_csv:
                 raise DiscoveryBlocked("manual_csv source needs --manual-csv PATH")
