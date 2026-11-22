@@ -61,6 +61,15 @@ def prequalify(attrs: dict, policy: IcpPolicy | dict | None = None) -> tuple[int
         if attrs.get("directory_frontend_hint"):
             score += 1
             reasons.append("+1 directory profile mentions relevant frontend or headless work")
+        # Source identity wording is a weak TIE-BREAK signal only. Almost every
+        # record in this provider's Software Development category gets +3,
+        # which otherwise leaves the shortlist ordered by an arbitrary hash.
+        if attrs.get("directory_software_focus_hint"):
+            score += 2
+            reasons.append("+2 directory name/tagline explicitly describes software/product development")
+        elif attrs.get("directory_marketing_focus_hint"):
+            score -= 1
+            reasons.append("-1 directory name/tagline suggests marketing-led rather than software-led services")
     if attrs.get("listed_on_exchange"):
         score -= 4
         reasons.append("-4 listed on a stock exchange (record)")
