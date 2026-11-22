@@ -14,6 +14,26 @@
   },
   "existing_automated_sources": [
     {
+      "id": "pickanagency",
+      "name": "Pick an Agency public REST API",
+      "mode": "implemented_automated",
+      "fit": "Web design and marketing agencies; frontend studio fit unmeasured",
+      "api": "https://www.pickanagency.com/api/v1/search",
+      "documentation": "https://www.pickanagency.com/developers",
+      "license": "CC BY 4.0 (public display requires source link attribution)",
+      "access_review": {
+        "reviewed_on": "2026-11-22",
+        "finding": "Documented keyless read-only search API, provider expressly permits apps, research and AI tools; recommended well below a few requests per second.",
+        "source": "https://www.pickanagency.com/developers"
+      },
+      "limits": {
+        "max_queries_per_run": 3,
+        "max_per_query": 25,
+        "request_gap_seconds": 1.1
+      },
+      "note": "First-party agency website remains sole proof for qualification; website field may be missing; no live yield benchmark yet"
+    },
+    {
       "id": "drupal_org",
       "name": "Drupal.org Organizations",
       "mode": "implemented_automated",
