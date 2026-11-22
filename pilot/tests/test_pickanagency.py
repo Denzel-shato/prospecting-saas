@@ -92,8 +92,34 @@ class PickAnAgencyTests(unittest.TestCase):
         self.assertEqual(len(client.calls), 3)
         self.assertEqual(sleeps, [1.1, 1.1])
         self.assertTrue(all(urlsplit(url).hostname == "www.pickanagency.com" for _, url in client.calls))
+        params = [parse_qs(urlsplit(url).query) for _, url in client.calls]
+        self.assertEqual(params, [
+            {"service": ["Software Development"], "limit": ["25"]},
+            {"q": ["custom software"], "limit": ["25"]},
+            {"q": ["software development"], "limit": ["25"]},
+        ])
+        self.assertTrue(all("Web Design" not in repr(p) for p in params))
         with self.assertRaises(ValueError):
             PickAnAgencyAdapter(client, search_terms=("a", "b", "c", "d"))
+
+    def test_custom_search_terms_do_not_inherit_web_design_filter(self):
+        client = MockClient({"results": [record("Build Studio", "https://build.example")]})
+        adapter = PickAnAgencyAdapter(client, worldwide=True, search_terms=("custom software",))
+        (candidate,) = adapter.discover()
+        self.assertEqual(parse_qs(urlsplit(client.calls[0][1]).query),
+                         {"q": ["custom software"], "limit": ["25"]})
+        self.assertEqual(candidate.attrs["directory_discovery_query"], {"q": "custom software"})
+        self.assertEqual(candidate.discovery_method, AUTOMATED)
+
+    def test_default_category_query_retains_listing_provenance(self):
+        client = MockClient({"results": [record("Dev Agency", "https://devagency.example",
+                                               services=["Software Development"])]})
+        adapter = PickAnAgencyAdapter(client, worldwide=True, sleeper=lambda _: None)
+        (candidate,) = adapter.discover()
+        self.assertEqual(candidate.attrs["directory_discovery_query"],
+                         {"service": "Software Development"})
+        self.assertEqual(adapter.yield_stats["duplicate_domain"], 2)
+        self.assertEqual(adapter.yield_stats["candidates"], 1)
 
     def test_does_not_guess_domain_from_directory_profile(self):
         row = record("Missing Site", None)
