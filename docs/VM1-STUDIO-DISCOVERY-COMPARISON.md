@@ -28,3 +28,22 @@ Reviewed 12 deliberately selected partner listings across tiers and checked comp
 ## Use in VM1
 
 Enter verified company names and first-party URLs through the existing `manual_csv` adapter. Use the frontend-studio ICP and retain the public listing and first-party project URLs as review evidence. Manual inputs are excluded from autonomous metrics. A future automated source should be evaluated on a repeatable labeled batch with the same scorer, including companies that fail the relevance check.
+
+## Fixed-order follow-up
+
+Reviewed the first ten visible Silver partners in the directory's displayed order on 2026-11-22, from Aceik through Big Human. This sample overlaps the earlier hand-picked review. It is small and represents one tier.
+
+| Order | Partner | Review | Evidence |
+|---|---|---|---|
+| 1 | Aceik | Skip | [Australian agency](https://www.aceik.com.au/). |
+| 2 | Alliance Innovations | Plausible | [US headquarters](https://www.allianceinnovations.com/contact) and [client application services](https://vercel.com/partners/solution-partners/alliance-innovations). |
+| 3 | Alpenite | Skip | [European offices](https://www.alpenite.com/contatti/). |
+| 4 | Alpha Solutions | Unresolved | [US office and commerce development](https://www.alpha-solutions.com/en). Frontend overflow fit and size need review. |
+| 5 | Apply Digital | Skip | [Global client delivery](https://www.applydigital.com/careers/). Its [historical company deck](https://assets.ctfassets.net/fo9twyrwpveg/yXH576N143M46BQY1iXfu/0440ff8a018ba2c98de328a80bd9b621/Apply_Digital_Deck_for_Contentful_Partnership_Page__1_.pdf) lists 230 employees. |
+| 6 | Appnovation | Skip | [Global consultancy with multiple regional teams](https://www.appnovation.com/company/contact). |
+| 7 | Artisan Studios | Unresolved | [US digital consultancy](https://www.artisan-studios.com/about). Small-studio frontend fit is unverified. |
+| 8 | basement.studio | Skip | [Based in Argentina](https://basement.studio/ai/faq). |
+| 9 | Bejamas | Skip | [Poland registration](https://bejamas.com/legal/privacy-policy). US location was not established in this review. |
+| 10 | Big Human | Plausible | [New York-area client product engineering](https://www.bighuman.com/about). |
+
+Result: **2 plausible, 6 skips, 2 unresolved**. Keep the directory as a manual seed source with US geography, agency scale, and client application work reviewed before import. This fixed-order check did not establish enough improvement to justify an automated directory integration.
