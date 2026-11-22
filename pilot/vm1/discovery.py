@@ -133,10 +133,11 @@ class WikidataAdapter(Adapter):
                   "narrow; back off on 429. Data is CC0.")
     license_note = "CC0 (Wikidata)"
 
-    def __init__(self, client: ApiClient, limit: int = 500, *, worldwide: bool = False):
+    def __init__(self, client: ApiClient, limit: int = 500, *, worldwide: bool = False, hard_max: int = 250):
         require_zero_cost(self.name, self.cost_class)
         self.client = client
         self.limit = limit
+        self.hard_max = hard_max  # reported headcount above this is excluded BEFORE the LIMIT window (see build_query)
         self.worldwide = worldwide
 
     def _get(self, query: str) -> dict:
@@ -172,6 +173,12 @@ class WikidataAdapter(Adapter):
   OPTIONAL {{ ?item wdt:P1128 ?employees . }}
   SERVICE wikibase:label {{ bd:serviceParam wikibase:language "en". }}
 }} LIMIT {int(self.limit)}"""
+        # The LIMIT window is the only part of the class a run ever sees, and ORDER BY ?item fills it with the
+        # lowest Q-ids: long-established, mostly listed or very large software companies. Exclusion criteria the
+        # ICP already treats as hard (listed on an exchange, reported headcount above the hard maximum) are
+        # therefore applied BEFORE the LIMIT so the window is spent on plausible candidates. Missing headcount
+        # stays eligible (unknown is never an exclusion).
+        window = (f"FILTER(!?listed)\n  FILTER(!BOUND(?employees) || ?employees <= {int(self.hard_max)})")
         # ?desc (English item description) and ?listed (has a stock-exchange statement) are used ONLY
         # for pre-research prioritisation (vm1.prequalify); they never qualify a company by themselves.
         # ORDER BY makes the LIMIT window deterministic instead of an arbitrary server-side slice.
@@ -183,6 +190,7 @@ class WikidataAdapter(Adapter):
   OPTIONAL {{ ?item wdt:P1128 ?employees . }}
   OPTIONAL {{ ?item schema:description ?desc . FILTER(LANG(?desc) = "en") }}
   BIND(EXISTS {{ ?item wdt:P414 ?exchange }} AS ?listed)
+  {window}
   SERVICE wikibase:label {{ bd:serviceParam wikibase:language "en". }}
 }} ORDER BY ?item LIMIT {int(self.limit)}"""
 

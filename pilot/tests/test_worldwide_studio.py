@@ -45,3 +45,24 @@ class WorldwideStudioTests(unittest.TestCase):
                 return {"list": rows}
 
         self.assertEqual([c.source_id for c in DrupalOrgAdapter(Client(), worldwide=True).discover()], ["0", "1"])
+
+
+class WikidataWindowTests(unittest.TestCase):
+    """The LIMIT window must not be spent on listed or oversized companies (ORDER BY ?item = lowest Q-ids)."""
+
+    def test_enriched_query_filters_listed_and_oversized_before_the_limit(self):
+        for worldwide in (False, True):
+            q = WikidataAdapter(None, worldwide=worldwide, hard_max=250).build_query(enriched=True)
+            self.assertIn("FILTER(!?listed)", q)
+            self.assertIn("FILTER(!BOUND(?employees) || ?employees <= 250)", q)
+            self.assertLess(q.index("FILTER(!?listed)"), q.index("LIMIT"))
+            # unknown headcount is never an exclusion
+            self.assertIn("!BOUND(?employees)", q)
+
+    def test_basic_fallback_query_is_unchanged(self):
+        q = WikidataAdapter(None, worldwide=True).build_query(enriched=False)
+        self.assertNotIn("?listed", q)
+        self.assertNotIn("?employees <=", q)
+
+    def test_hard_max_is_configurable(self):
+        self.assertIn("?employees <= 100", WikidataAdapter(None, hard_max=100).build_query())
