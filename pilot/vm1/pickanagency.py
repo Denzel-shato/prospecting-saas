@@ -43,6 +43,14 @@ class PickAnAgencyAdapter(Adapter):
                        r"vue(?:\.?js)?|nuxt(?:\.?js)?|angular|svelte|headless)\b", re.I)
     _SERVICE = re.compile(r"\b(?:web design|web development|software development|"
                           r"app development|development|digital agency)\b", re.I)
+    # First-party research, NOT directory labels, determines actual qualification.
+    # These are only light-weight discovery ordering hints from the name/tagline.
+    _SOFTWARE_FOCUS = re.compile(
+        r"\b(?:custom software|bespoke software|software development|software solutions|"
+        r"software studio|software agency|software consultancy|product studio|"
+        r"product development|app development|app developers|development studio)\b", re.I)
+    _MARKETING_FOCUS = re.compile(
+        r"\b(?:seo|marketing|branding|advertising|social media|lead generation)\b", re.I)
     _US = {"us", "usa", "united states", "united states of america"}
 
     def __init__(self, client: ApiClient, *, worldwide: bool = False,
@@ -118,6 +126,9 @@ class PickAnAgencyAdapter(Adapter):
                 tagline = row.get("tagline") if isinstance(row.get("tagline"), str) else ""
                 wording = " ".join([tagline, *services])
                 frontend = bool(self._TECH.search(wording))
+                identity_wording = f"{name} {tagline}"
+                software_focus = bool(self._SOFTWARE_FOCUS.search(identity_wording))
+                marketing_focus = bool(self._MARKETING_FOCUS.search(identity_wording))
                 seen[domain] = Candidate(
                     name=name.strip(), url=website.strip(), domain=domain,
                     discovery_method=AUTOMATED, source=self.name,
@@ -126,6 +137,9 @@ class PickAnAgencyAdapter(Adapter):
                     source_license=self.license_note, retrieved_at=stamp,
                     attrs={"directory_service_hint": bool(self._SERVICE.search(wording)),
                            "directory_frontend_hint": frontend,
+                           "directory_software_focus_hint": software_focus,
+                           "directory_marketing_focus_hint": marketing_focus,
+                           "directory_tagline": tagline[:200],
                            "country": country,
                            "directory_name": self.SOURCE_NAME,
                            "directory_discovery_query": dict(query)})
