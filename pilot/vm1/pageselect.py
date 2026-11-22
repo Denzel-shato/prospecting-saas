@@ -131,17 +131,21 @@ class Selection:
 
 
 _INDEX_LEAF_RE = re.compile(r"/(?:index|default|home)\.(?:html?|php|aspx?)$")
+# Static/legacy page documents: "/about.html" is the page "/about". Only the LAST path segment is ever stripped.
+_PAGE_EXT_RE = re.compile(r"\.(?:html?|shtml|php[345]?|aspx?|jsp|cfm)$", re.I)
+_INDEX_LEAVES = {"index", "default", "home"}
 
 
 def canonical_key(url: str) -> str:
     """Identity of a page for de-duplication ONLY (never used as the fetch URL): scheme, 'www.', case,
-    trailing slashes, repeated slashes, index documents, query and fragment are ignored."""
+    trailing slashes, repeated slashes, index documents, page-document extensions (/about == /about.html), query and
+    fragment are ignored."""
     sp = urlsplit(url)
     host = (sp.hostname or "").lower()
     if host.startswith("www."):
         host = host[4:]
     path = re.sub(r"/{2,}", "/", unquote(sp.path or "/")).lower()
-    path = _INDEX_LEAF_RE.sub("/", path).rstrip("/")
+    path = _PAGE_EXT_RE.sub("", _INDEX_LEAF_RE.sub("/", path)).rstrip("/")
     return f"{host}{path or '/'}"
 
 
@@ -176,6 +180,12 @@ def _norm_text(text: str) -> str:
 
 def _segments(path: str) -> list[str]:
     segs = [unquote(s).lower() for s in path.split("/") if s]
+    if segs:  # about.html -> about; services/index.html -> services (path evidence only, never link text)
+        leaf = _PAGE_EXT_RE.sub("", segs[-1])
+        if leaf != segs[-1]:
+            segs[-1] = leaf
+            if not leaf or leaf in _INDEX_LEAVES:
+                segs.pop()
     if segs and re.fullmatch(r"[a-z]{2}(?:-[a-z]{2})?", segs[0]) and len(segs) > 1:
         segs = segs[1:]  # locale prefix: /en/services -> services
     return segs
