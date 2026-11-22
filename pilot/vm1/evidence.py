@@ -95,7 +95,7 @@ SERVICE_PATTERNS: dict[str, list[re.Pattern]] = {
         r"\b(?:web (?:apps?|applications?)|saas|dashboards?|(?:client|customer) portals?|admin panels?)\b",
         re.I)],
     "custom_software": [re.compile(
-        r"\b(?:custom software|software development|product development|software engineering|"
+        r"\b(?:custom software|bespoke software|software development|product development|software engineering|"
         r"product engineering)\b", re.I)],
 }
 # Service lines of local/professional service businesses (vm1.facts). Whether a company OFFERS one is decided by the
@@ -103,7 +103,8 @@ SERVICE_PATTERNS: dict[str, list[re.Pattern]] = {
 SERVICE_PATTERNS.update(SERVICE_LINE_PATTERNS)
 ENTITY_RE = re.compile(
     r"\b(?:software (?:studio|agency|development (?:company|agency|studio|firm|shop))|product studio|"
-    r"digital (?:agency|studio|product studio|product agency|product consultancy)|product (?:agency|consultancy)|"
+    r"digital (?:agency|studio|product studio|product agency|product consultancy)|"
+    r"(?:creative|design|interactive|brand and web|branding and web) (?:agency|studio)|product (?:agency|consultancy)|"
     r"development (?:studio|agency|shop)|"
     r"web (?:agency|studio|development (?:company|agency))|app development (?:company|agency)|"
     r"engineering studio|design (?:and|&) development (?:studio|agency)|"
@@ -283,14 +284,24 @@ OFFER_RE = re.compile(
     r"|\b(?:studio|agency|firm|shop|consultancy|company|team)\s+(?:that |which |who )?"
     r"(?:specializ\w+|specialis\w+|build(?:s|ing)|design(?:s|ing)|develop(?:s|ing)|deliver(?:s|ing)|focus\w*)\b"
     r"|\bour (?:services|expertise|capabilities)\b|\b(?:services|expertise|capabilities)\s+(?:include|includes|are)\b"
-    r"|\b(?:is|are) our (?:core|focus|specialty|specialism|speciality|craft)\b"
-    r"|\b(?:react|next\.?js|typescript|front-?end|web app\w*|custom software)\s+"
+    r"|\b(?:is|are) our (?:core|focus|specialty|specialism|speciality|craft)\b", re.I)
+# "React development" as a bare phrase. Weaker than a first-person offer: product/feature wording ("Our SDK supports
+# React development") vetoes it.
+TECH_SERVICE_PHRASE_RE = re.compile(
+    r"\b(?:react|next\.?js|typescript|front-?end|web app\w*|custom software)\s+"
     r"(?:development|engineering|consulting|services)\b", re.I)
 # Additional client-development offering structures (Issue #3). Each is only a MARKER inside a sentence that
 # also contains the technology keyword; PRODUCT_FEATURE_RE below still vetoes product/feature wording.
 CUSTOM_BUILD_RE = re.compile(
-    r"\bcustom\s+(?:[\w-]+\s+){0,2}?(?:storefronts?|e-?commerce\s+(?:sites?|stores?|builds?)|websites?|web\s?sites?|"
+    r"\b(?:custom|bespoke)\s+(?:[\w-]+\s+){0,2}?(?:storefronts?|e-?commerce\s+(?:sites?|stores?|builds?)|websites?|web\s?sites?|"
     r"web\s?apps?|web applications?|software|apps?|integrations?|builds?|sites?|themes?)\b", re.I)
+# A short element whose WHOLE text is a service name ("Software Development", "React development", "Frontend
+# expertise"). Bare technology words ("React", "Frontend") are deliberately not labels.
+SERVICE_LABEL_RE = re.compile(
+    r"(?:(?:custom|bespoke) )?(?:software|web|mobile|app|product)(?: and \w+)? development(?: services)?"
+    r"|(?:react(?:\.?js)?|next\.?js|typescript|front-?end|web app(?:lication)?s?)(?: (?:and|&) (?:react(?:\.?js)?|next\.?js|"
+    r"typescript|front-?end))? (?:development|engineering|consulting|services|expertise)"
+    r"|front-?end(?: and back-?end)? (?:development|engineering|expertise)", re.I)
 SECOND_PERSON_RE = re.compile(r"\b(?:you|your|you(?:'|’)re|you(?:'|’)ll)\b", re.I)
 ENGAGEMENT_RE = re.compile(
     r"\b(?:the|our) (?:firm|studio|agency|company|team)(?:'|’)s\s+(?:[\w-]+\s+){0,3}?"
@@ -461,8 +472,10 @@ def _offering(text: str, m: re.Match, kind: str, ctx, third_party: bool, page=No
     offer = OFFER_RE.search(sent) is not None
     if PRODUCT_FEATURE_RE.search(sent) and not offer:
         return False
-    if offer:
+    if offer or TECH_SERVICE_PHRASE_RE.search(sent):
         return True
+    if SERVICE_LABEL_RE.fullmatch(text.strip()):
+        return True  # the element IS a service name (card/heading label); product/own-product wording vetoed above
     if kind == "services" and len(text) <= 220:
         return True  # a short services-page list item is the company listing its own services
     if ENGAGEMENT_RE.search(sent):
@@ -501,6 +514,21 @@ def _service_evidence(company_key: str, snaps: list[PageSnapshot], tag: str, pat
                                    "a client service (feature/docs/testimonial/client-work/generic wording); ")
                                   + "weight 0")
     return None, mention
+
+
+def _nav_service_evidence(company_key: str, snaps: list[PageSnapshot], pats: list[re.Pattern], tag: str):
+    """A first-party navigation/footer SERVICE LABEL. Called only once a self-referential agency identity exists and
+    no vendor/enterprise signal does; nav text alone is never trusted otherwise."""
+    for snap in snaps:
+        for text, _i, kind, ctx, tp in _signal_items(snap):
+            if tp or (ctx & THIRD_PARTY_CTX) or kind in NON_OFFERING_KINDS or len(text) > 60:
+                continue
+            m = next((mm for pat in pats if (mm := pat.search(text))), None)
+            if m and SERVICE_LABEL_RE.fullmatch(text.strip()):
+                return _ev(company_key, f"service:{tag}", tag, snap, text, m,
+                           "first-party navigation service label; agency identity established elsewhere on the site, "
+                           "no product-vendor signals")
+    return None
 
 
 def _identity_evidence(company_key: str, snaps: list[PageSnapshot]) -> list[Evidence]:
@@ -669,6 +697,16 @@ def extract_evidence(company_key: str, snaps: list[PageSnapshot],
             out.append(offered)
         elif mention:
             mentions.append(mention)
+    strong_identity = any(e.claim_type in ("entity_type:studio_or_agency", "entity_type:client_services") for e in out)
+    vendor_like = any(e.claim_type in ("company_type:saas_vendor_signal", "company_type:enterprise_signal") for e in out)
+    if strong_identity and not vendor_like:
+        have = {e.claim_type for e in out}
+        for tag, pats in SERVICE_PATTERNS.items():
+            if f"service:{tag}" not in have and tag in ("react", "nextjs", "typescript", "frontend", "web_app", "custom_software"):
+                nav = _nav_service_evidence(company_key, snaps, pats, tag)
+                if nav:
+                    out.append(nav)
+                    mentions = [mn for mn in mentions if mn.claim_type != f"mention:{tag}"]
 
     # location
     hit = _find(snaps, [US_ADDRESS_RE])
