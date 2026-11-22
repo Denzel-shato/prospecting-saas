@@ -26,7 +26,7 @@ Snapshots and live runs stay local and git-ignored.
 
 ## Reproduce
     cd pilot
-    python3 -m unittest discover -s tests -t .          # 165 tests, offline
+    python3 -m unittest discover -s tests -t .          # 211 tests as of Issue #5 checkpoint (check CI)
     python3 -m vm1 synthetic                             # offline pipeline check on FICTIONAL data (never a finding)
     python3 -m vm1 run --sources wikidata                # live, keyless, zero-cost discovery
     python3 -m vm1 run --sources wikidata,openstreetmap --ack-overpass-terms   # adds Overpass (see below)
