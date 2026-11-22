@@ -58,12 +58,16 @@ def requalify_run(source_dir: str | Path, policy: IcpPolicy | dict | str, out_ro
         http_requests_logged=0, paid_api_spend_usd=0.0, spend_ledger_entries=0,
         credentials_detected_in_env_but_ignored=[],
         elapsed_s=0.0, stage_elapsed_s={"requalification_s": 0.0},
+        # Original record-term coverage belongs to the source ICP, not the newly selected policy.
+        # Preserve it in lineage but do not present it as if it described the new target market.
+        discovery_coverage={},
         requalification={
             "source_run_id": original.get("run_id"),
             "source_mode": original.get("mode"),
             "source_icp_id": original.get("icp_id"),
             "source_policy_digest": original.get("policy_digest"),
             "source_http_requests_logged": original.get("http_requests_logged"),
+            "source_discovery_coverage": original.get("discovery_coverage"),
             "counts_as_fresh_discovery": False,
             "counts_as_independent_live_result": False,
             "stored_evidence_only": True,
