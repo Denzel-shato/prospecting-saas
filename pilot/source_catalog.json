@@ -1,0 +1,247 @@
+{
+  "schema_version": 1,
+  "as_of": "2026-11-22",
+  "purpose": "Candidate discovery SOURCE CATALOG, not a list of lead companies and not permission to scrape directory websites.",
+  "scope": "Worldwide frontend studio campaign excluding India; secondary sources for other configured ICPs.",
+  "constraints": {
+    "commercial_crawling": "Do not add an automated directory crawler without checking its robots.txt, relevant terms, licensing, and documented API or explicit permission.",
+    "manual_import": "Review directory listings manually, collect official agency name and its own website, and feed those records through the existing manual_csv source (name,url).",
+    "provenance": "Keep source directory attribution in human review records; the current manual_csv adapter does not preserve individual directory provenance without additional work.",
+    "verification": "Do not treat directory statements as first-party proof of offered services, location, headcount, leaders or React/Next.js capabilities.",
+    "deduplication": "Deduplicate by canonical company domain and keep a separate source occurrence log.",
+    "safety": "Honor source limits; no email extraction, guessed contacts, automated sending, bypassing blocks, or paid APIs in the $0 pilot.",
+    "evidence": "No measured live yield is claimed for any of the new directories. Selection order is a hypothesis to validate with small labeled batches."
+  },
+  "existing_automated_sources": [
+    {
+      "id": "drupal_org",
+      "name": "Drupal.org Organizations",
+      "mode": "implemented_automated",
+      "fit": "Drupal and web agencies"
+    },
+    {
+      "id": "wikidata",
+      "name": "Wikidata",
+      "mode": "implemented_automated",
+      "fit": "Low-precision general company discovery"
+    },
+    {
+      "id": "openstreetmap",
+      "name": "OpenStreetMap Overpass",
+      "mode": "implemented_opt_in",
+      "fit": "Business listings; requires terms acknowledgement"
+    }
+  ],
+  "proposed_directory_sources": [
+    {
+      "id": "vercel_solution_partners",
+      "name": "Vercel Solution Partners",
+      "url": "https://vercel.com/partners/solution-partners",
+      "priority": 1,
+      "icps": [
+        "frontend-studio-worldwide-v1"
+      ],
+      "fit": "Next.js and modern frontend agencies",
+      "mode": "manual_seed_only",
+      "automated_adapter": false,
+      "automated_access_verified": false
+    },
+    {
+      "id": "netlify_agency_directory",
+      "name": "Netlify Agency Directory",
+      "url": "https://www.netlify.com/agency-directory/",
+      "priority": 2,
+      "icps": [
+        "frontend-studio-worldwide-v1"
+      ],
+      "fit": "React/Next.js and frontend development agencies",
+      "mode": "manual_seed_only",
+      "automated_adapter": false,
+      "automated_access_verified": false
+    },
+    {
+      "id": "sanity_agency_partners",
+      "name": "Sanity Agency Partners",
+      "url": "https://www.sanity.io/agency-partners",
+      "priority": 3,
+      "icps": [
+        "frontend-studio-worldwide-v1"
+      ],
+      "fit": "Headless CMS, product studios and frontend delivery",
+      "mode": "manual_seed_only",
+      "automated_adapter": false,
+      "automated_access_verified": false
+    },
+    {
+      "id": "payload_partners",
+      "name": "Payload Partners",
+      "url": "https://payloadcms.com/partners",
+      "priority": 4,
+      "icps": [
+        "frontend-studio-worldwide-v1"
+      ],
+      "fit": "Next.js/Payload software and website agencies",
+      "mode": "manual_seed_only",
+      "automated_adapter": false,
+      "automated_access_verified": false
+    },
+    {
+      "id": "strapi_partners",
+      "name": "Strapi Community Partners",
+      "url": "https://community.strapi.io/partners",
+      "priority": 5,
+      "icps": [
+        "frontend-studio-worldwide-v1"
+      ],
+      "fit": "Custom web and CMS development agencies",
+      "mode": "manual_seed_only",
+      "automated_adapter": false,
+      "automated_access_verified": false
+    },
+    {
+      "id": "storyblok_solution_partners",
+      "name": "Storyblok Solution Partners",
+      "url": "https://www.storyblok.com/partners/solution",
+      "priority": 6,
+      "icps": [
+        "frontend-studio-worldwide-v1"
+      ],
+      "fit": "Headless frontends and digital studios",
+      "mode": "manual_seed_only",
+      "automated_adapter": false,
+      "automated_access_verified": false
+    },
+    {
+      "id": "prismic_partner_directory",
+      "name": "Prismic Hire a Developer",
+      "url": "https://prismic.io/hire-a-developer",
+      "priority": 7,
+      "icps": [
+        "frontend-studio-worldwide-v1"
+      ],
+      "fit": "Agency web development",
+      "mode": "manual_seed_only",
+      "automated_adapter": false,
+      "automated_access_verified": false
+    },
+    {
+      "id": "datocms_solution_partners",
+      "name": "DatoCMS Solution Partners",
+      "url": "https://www.datocms.com/partners",
+      "priority": 8,
+      "icps": [
+        "frontend-studio-worldwide-v1"
+      ],
+      "fit": "Frontend and headless web development",
+      "mode": "manual_seed_only",
+      "automated_adapter": false,
+      "automated_access_verified": false
+    },
+    {
+      "id": "craftcms_partners",
+      "name": "Craft CMS Partners",
+      "url": "https://craftcms.com/partners",
+      "priority": 9,
+      "icps": [
+        "frontend-studio-worldwide-v1"
+      ],
+      "fit": "Independent client-service web agencies",
+      "mode": "manual_seed_only",
+      "automated_adapter": false,
+      "automated_access_verified": false
+    },
+    {
+      "id": "builder_agency_partners",
+      "name": "Builder.io Agency Partners",
+      "url": "https://www.builder.io/partners",
+      "priority": 10,
+      "icps": [
+        "frontend-studio-worldwide-v1"
+      ],
+      "fit": "Web development and digital experience agencies",
+      "mode": "manual_seed_only",
+      "automated_adapter": false,
+      "automated_access_verified": false
+    },
+    {
+      "id": "webflow_certified_partners",
+      "name": "Webflow Certified Partners",
+      "url": "https://webflow.com/certified-partners/browse",
+      "priority": 11,
+      "icps": [
+        "frontend-studio-worldwide-v1"
+      ],
+      "fit": "Design/development studios; filter for custom frontend work",
+      "mode": "manual_seed_only",
+      "automated_adapter": false,
+      "automated_access_verified": false
+    },
+    {
+      "id": "framer_agency_experts",
+      "name": "Framer Agency Experts",
+      "url": "https://www.framer.com/community/experts/agencies/",
+      "priority": 12,
+      "icps": [
+        "frontend-studio-worldwide-v1"
+      ],
+      "fit": "Boutique web agencies; exclude design-only providers",
+      "mode": "manual_seed_only",
+      "automated_adapter": false,
+      "automated_access_verified": false
+    },
+    {
+      "id": "shopify_partner_directory",
+      "name": "Shopify Partner Directory",
+      "url": "https://www.shopify.com/partners/directory",
+      "priority": 13,
+      "icps": [
+        "frontend-studio-worldwide-v1",
+        "ecommerce-marketing-agency"
+      ],
+      "fit": "Ecommerce development and implementation agencies",
+      "mode": "manual_seed_only",
+      "automated_adapter": false,
+      "automated_access_verified": false
+    },
+    {
+      "id": "contentful_solution_partners",
+      "name": "Contentful Solution Partners",
+      "url": "https://www.contentful.com/partners/solutions/",
+      "priority": 14,
+      "icps": [
+        "frontend-studio-worldwide-v1"
+      ],
+      "fit": "Development partners; filter enterprise-size firms",
+      "mode": "manual_seed_only",
+      "automated_adapter": false,
+      "automated_access_verified": false
+    },
+    {
+      "id": "umbraco_solution_partners",
+      "name": "Umbraco Solution Partners",
+      "url": "https://umbraco.com/partners/find-a-solution-partner/",
+      "priority": 15,
+      "icps": [
+        "frontend-studio-worldwide-v1"
+      ],
+      "fit": "Custom development firms; frontend fit needs first-party proof",
+      "mode": "manual_seed_only",
+      "automated_adapter": false,
+      "automated_access_verified": false
+    },
+    {
+      "id": "hubspot_solutions_partners",
+      "name": "HubSpot Solutions Partners",
+      "url": "https://ecosystem.hubspot.com/marketplace/solutions",
+      "priority": 16,
+      "icps": [
+        "ai-automation-service-businesses",
+        "ecommerce-marketing-agency"
+      ],
+      "fit": "CRM automation and agency service providers",
+      "mode": "manual_seed_only",
+      "automated_adapter": false,
+      "automated_access_verified": false
+    }
+  ]
+}
