@@ -175,3 +175,22 @@ Real pages unavailable; patterns reproduced with fictional fixtures (`pilot/test
 
 ### rehabcreative identity fix (2026-11-22, offline only)
 Cause: `CLIENT_SERVICES_RE` required "we build/design ... for <clients/startups/...>"; "We help organizations plan, build, improve, and support websites and digital tools" puts the client noun as the object of "help", so no identity was found (reproduced with the quoted homepage text). Fix in `vm1/evidence.py`: "we [also] help <organizations|businesses|companies|brands|startups|founders|nonprofits|institutions|clients> ... plan/build/design/develop/improve/support/..." counts as `entity_type:client_services` on first-party non-bio/blog/docs/case-study pages; sentences with product/feature or own-product wording are vetoed (new narrower `CLIENT_SERVICE_VETO_RE`, since "support"/"API" are normal service words). A bare "We build websites, custom applications, APIs, integrations." is still NOT identity. Scores/thresholds unchanged. One earlier test (`test_qualification_quality`) used "We help startups design and build..." as its ambiguous example; its wording was changed to "We design and build digital products..." because the former is now deliberate identity. Tests 289 OK; 4 ICPs validate. Unverified: the live rehabcreative page itself.
+
+
+### Directory seed ingestion + Vercel/Netlify access review (2026-11-22, offline only)
+**Branch:** `vm1-pilot-issue5-icp-foundation`. **Code commit:** `671d97f10a7c3f4148b045cc4a10a8b71837652e` (pushed, no force).
+**Done:** `vm1/directory_seed.py` (catalog loader that fails closed on unverified automated claims; CSV ingest with directory name/URL
+attribution; domain dedupe with a full occurrence log; `DirectorySeedAdapter`, always `manual`); CLI `run --directory-seed-csv/--directory-source`
+and offline `seed-directory`; pipeline records directory attribution on each company, adds `raw_/selected_manual_directory_seed` counts
+(subset of manual, never automated) and a manifest `directory_seed` block, and logs `source`/`source_id` on cross-adapter duplicate rejects;
+report treats `directory_seed`-only runs as manual qualification. Changed: `vm1/{directory_seed,discovery,pipeline,report,cli}.py`,
+`source_catalog.json` (`access_review` for Vercel and Netlify), `fixtures/directory_seed/*` (fictional), `tests/test_directory_seed.py`, CI smoke step.
+**Vercel/Netlify:** no automated adapter. No documented API/feed found; Vercel AUP prohibits scraping with no directory exception; Netlify terms
+give no collection permission; robots.txt unreadable in this review (unverified, not "allowed"); Netlify index shows no agency website URLs.
+**Tests:** 308 OK locally (289 prior + 19 new, incl. fictional fixture smoke through the pipeline). CI for this push not yet checked.
+**Not done / limits:** no live crawl and no real directory data ingested; real seed CSVs must be hand-collected. If an automated and a manual
+source find the same domain, the first adapter in order is kept (automated runs first in the CLI), so a manual seed can never be relabelled
+as autonomous; the second source's attribution is in the reject log, not the company record. Directory-seed fit is unmeasured.
+**Next:** hand-collect a small labelled batch (e.g. 10 agencies per directory in catalog priority order), run `seed-directory` then `run`, and
+compare yield per directory; ask Vercel/Netlify for permission or an API only if the user wants automation.
+

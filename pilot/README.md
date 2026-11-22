@@ -32,6 +32,8 @@ Snapshots and live runs stay local and git-ignored.
     python3 -m vm1 run --sources wikidata,openstreetmap --ack-overpass-terms   # adds Overpass (see below)
     python3 -m vm1 run --sources wikidata --manual-csv my.csv                  # name,url CSV, labelled MANUAL
     python3 -m vm1 report --run runs/<run_id> --labels labels.csv              # add human labels
+    python3 -m vm1 seed-directory --csv seeds.csv --directory-source vercel_solution_partners --out seeds/vercel   # OFFLINE ingest + dedupe
+    python3 -m vm1 run --sources drupal_org --directory-seed-csv seeds.csv --directory-source vercel_solution_partners   # seeds -> qualification
 
 Outputs go to `runs/<run_id>/` (git-ignored): `manifest.json`, `candidates.json`, `rejected.json`,
 `companies.json` (evidence + score explanations), `drafts/`, `fetch_log.jsonl`, `report.md`, `labels_template.csv`.
@@ -42,8 +44,26 @@ Outputs go to `runs/<run_id>/` (git-ignored): `manifest.json`, `candidates.json`
 | Wikidata SPARQL | implemented | CC0. Expect thin coverage of small studios. Class/country IDs are verified by label at runtime. |
 | OpenStreetMap Overpass (`office=it` + `website`, US) | implemented, **needs `--ack-overpass-terms`** | ODbL. Public instance policy: identifying UA, no parallel use, low volume, commercial use should self-host. You must confirm you accept that. |
 | Manual CSV | implemented | Always labelled `manual`; never counted as autonomous discovery. |
+| Directory seed CSV (`directory_seed`) | implemented, manual | Human-reviewed directory listings; keeps directory name/URL, dedupes by domain, labelled `manual`. See below. |
 | Synthetic fixture | implemented | Fictional, offline, tests only. |
 Web-search engines are deliberately **not** scraped (terms) and keyed search APIs (Exa/Tavily/Brave) are blocked in the $0 pilot.
+
+## Directory seeds (manual, source-attributed)
+`source_catalog.json` lists 16 directories (all `manual_seed_only`). A person reviews a directory in a browser and
+records each agency's **own** name and website: CSV columns `name,url` plus optional `directory_id`, `listing_url`
+(`--directory-source` supplies the id when the column is absent; `listing_url` must be on that directory's domain).
+Rows are validated, deduplicated by canonical company domain (first listing names the candidate; every listing stays
+in `directory_seed_occurrences.json`), and handed to the normal first-party qualification. Candidates are `manual`:
+they count in `selected_manual` / `selected_manual_directory_seed`, never in `*_automated`, and the directory listing
+is not evidence and does not change research order. Rows on the directory's own domain or on non-first-party sites
+(LinkedIn, Clutch, ...) are rejected and logged. `seed-directory` does the ingest offline for review before any run.
+
+**Vercel and Netlify (reviewed 2026-11-22): no automated adapter.** Neither exposes a documented partner-directory
+API or feed; Vercel's Acceptable Use Policy prohibits scraping/automated extraction with no exception for the directory,
+Netlify's Website Terms grant no right to copy or store the site or to collect it automatically, their robots.txt files
+could not be retrieved in the review, and Netlify's index does not show agencies' own website URLs. Evidence and the
+unblock condition are in each catalog entry's `access_review`. `AUTOMATED_DIRECTORY_ADAPTERS` must stay empty until a
+documented API or written permission is verified and recorded; the catalog loader fails closed on unverified claims.
 
 ## Guarantees enforced by tests
 SSRF checks on every URL and redirect hop with IP pinning; robots.txt honoured (5xx/unreachable = skip);
