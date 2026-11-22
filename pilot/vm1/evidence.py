@@ -25,6 +25,7 @@ from .context import (NON_OFFERING_KINDS, NON_SELF_KINDS, THIRD_PARTY_CTX, UNREL
 from .discovery import Candidate
 from .facts import (AI_CONSULTANCY_RE, CUSTOMER_INTAKE, ECOMMERCE_PLATFORM, EMAIL_CAPTURE, LOCAL_SERVICE_SIGNALS,
                     LOYALTY_SUBSCRIPTION, MARKETING_AGENCY_RE, SERVICE_LINE_PATTERNS, STOREFRONT_SIGNALS)
+from . import geo
 from .htmlparse import PageData, norm_ws
 
 SOURCE_SUPPORTED = "source_supported"
@@ -70,7 +71,10 @@ INDIA_LOCATION_RE = re.compile(
 INDIA_BASE_RE = re.compile(
     r"\b(?:(?:we(?:['’]re| are)|(?:our|the) (?:company|team|agency|studio|firm) (?:is|are)) "
     r"(?:based|headquartered)|(?:our |company |global |corporate )?headquarters(?:\s+(?:is|are))?)"
-    r"\s*(?:in\s+|[:–—]\s*)?" + INDIA_LOCATION_RE.pattern, re.I)
+    r"\s*(?:in\s+|[:–—]\s*)?" + INDIA_LOCATION_RE.pattern
+    + r"|(?:^|[.!?]\s+|\b(?:we(?:['’]re| are)|is|our|are)\s+)(?:an?\s+|the\s+)?" + INDIA_LOCATION_RE.pattern
+    + r"-based(?:\s+[\w&'’/-]+){0,3}?\s+(?:studio|agency|team|company|firm|consultancy|consultants|shop|collective|"
+    r"practice|business|boutique|developers|engineers|designers|partnership|house|labs?)\b", re.I)
 
 NON_US_PLACES = (
     "United Kingdom|UK|England|Scotland|Wales|London|Manchester|Canada|Toronto|Vancouver|Montreal|"
@@ -82,7 +86,9 @@ NON_US_PLACES = (
 )
 NON_US_RE = re.compile(
     rf"\b(?i:based|headquartered|located|offices?)\s+(?i:in)\s+"
-    rf"(?:[A-Z][\w.'’\-]+(?:\s+[A-Z][\w.'’\-]+)*,?\s+)?({NON_US_PLACES})\b")
+    rf"(?:[A-Z][\w.'’\-]+(?:\s+[A-Z][\w.'’\-]+)*,?\s+)?({NON_US_PLACES})\b"
+    # "Dublin, CA 94568" / "London, KY": a US state or ZIP after the place makes it a US town, not a non-US base.
+    rf"(?!\s*,?\s*(?:(?:{_ABBR_ALT})\b|\d{{5}}\b))")
 UK_POSTCODE_RE = re.compile(r"\b[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}\b")
 CA_POSTAL_RE = re.compile(r"\b[ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z]\s?\d[ABCEGHJ-NPRSTV-Z]\d\b")
 
@@ -267,6 +273,42 @@ def _ev(company_key, claim_type, value, snap: PageSnapshot, text: str, m: re.Mat
         claim_type=claim_type, value=value, level=SOURCE_SUPPORTED, source_type="first_party_page",
         source_url=snap.url, fetched_at=snap.fetched_at, excerpt=excerpt, excerpt_parts=[excerpt],
         notes=notes)
+
+
+def _generalized_location(company_key: str, snaps: list[PageSnapshot], have: set[str]) -> list[Evidence]:
+    """Non-US/US/India base evidence the legacy 'based in <listed place>' patterns miss (vm1.geo).
+
+    Self-referential text first (homepage first), then the page's OWN organisation JSON-LD address. Third-party
+    contexts (testimonials, client lists, partner blocks) and non-self pages never count; US states after a
+    city veto it. An India JSON-LD address is a base only when every organisation address on that page is Indian.
+    """
+    for snap in snaps:
+        for text, _, kind, ctx, third_party in _items(snap):
+            if third_party or ctx & THIRD_PARTY_CTX or kind in NON_SELF_KINDS:
+                continue
+            hit = geo.find_text_place(text)
+            if hit:
+                m, place = hit
+                return [_ev(company_key, "location:non_us", place, snap, text, m,
+                            "self-referential non-US base statement or address on first-party page")]
+    for snap in snaps:
+        if page_kind(snap.url, snap.is_homepage) in NON_SELF_KINDS:
+            continue
+        found = geo.jsonld_org_countries(snap.page)
+        kinds = {geo.country_kind(c) for _, c in found}
+        for raw, country in found:
+            kind = geo.country_kind(country)
+            if kind == "india" and kinds != {"india"}:
+                continue
+            claim = {"us": "location:us", "india": "location:india_hq"}.get(kind, "location:non_us")
+            if claim in have and claim != "location:non_us":
+                continue
+            m = geo.jsonld_excerpt(raw, country)
+            if m:
+                value = {"us": "US", "india": "IN"}.get(kind, country)
+                return [_ev(company_key, claim, value, snap, raw, m,
+                            "organisation postal address in the page's JSON-LD")]
+    return []
 
 
 def _state_value(raw: str) -> str:
@@ -761,6 +803,9 @@ def extract_evidence(company_key: str, snaps: list[PageSnapshot],
         value = m.group(1) if m.groups() else m.group(0)
         out.append(_ev(company_key, "location:non_us", value, snap, text, m,
                        "non-US place/postcode statement (detection is partial)"))
+
+    if not any(e.claim_type == "location:non_us" for e in out):
+        out.extend(_generalized_location(company_key, snaps, {e.claim_type for e in out}))
 
     for snap in snaps:
         hit = next(((text, match) for text, _, kind, ctx, third_party in _items(snap)
