@@ -105,7 +105,7 @@ def main(argv: list[str] | None = None) -> int:
     r = sub.add_parser("run", help="live run (free keyless sources only)")
     r.add_argument("--icp", default=str(ROOT / "icp" / "frontend-studio.json"))
     r.add_argument("--out", default=str(ROOT / "runs"))
-    r.add_argument("--sources", default="wikidata", help="comma list: wikidata,drupal_org,openstreetmap,manual_csv,directory_seed")
+    r.add_argument("--sources", default="wikidata", help="comma list: pickanagency,wikidata,drupal_org,openstreetmap,manual_csv,directory_seed")
     r.add_argument("--ack-overpass-terms", action="store_true",
                    help="confirm you read the Overpass public-instance policy (needed for openstreetmap)")
     r.add_argument("--manual-csv", help="name,url CSV; labelled MANUAL, excluded from autonomous metrics")
