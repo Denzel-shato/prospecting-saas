@@ -124,6 +124,11 @@ class Requalification(unittest.TestCase):
             self.assertFalse(derived["manifest"]["requalification"]["counts_as_independent_live_result"])
             self.assertFalse(derived["manifest"]["requalification"]["counts_as_fresh_discovery"])
             self.assertEqual(derived["manifest"]["http_requests_logged"], 0)
+            self.assertEqual(derived["manifest"]["discovery_coverage"], {})
+            self.assertEqual(
+                derived["manifest"]["requalification"]["source_discovery_coverage"],
+                original["manifest"]["discovery_coverage"],
+            )
             self.assertEqual(derived["manifest"]["paid_api_spend_usd"], 0)
             self.assertEqual(derived["drafts"], [])
             self.assertEqual(len(derived["companies"]), len(original["companies"]))
