@@ -61,6 +61,15 @@ class WeeklyReviewTests(unittest.TestCase):
         self.edit_review(queue, verified_person_url="https://www.new.example/team")
         self.assertEqual(build_weekly(batches, [], self.out)["ready_to_contact"], 1)
         self.assertEqual(read_reviews(queue)["new.example"]["reason"], "Client web work")
+        self.assertEqual(build_weekly(batches, [], self.out)["high_fit_ready_to_contact"], 0)
+        self.edit_review(queue, fit="plausible", client_project_url="https://new.example/work/portal")
+        self.assertEqual(build_weekly(batches, [], self.out)["high_fit_ready_to_contact"], 0)
+        self.edit_review(queue, fit="strong", client_project_url="https://offsite.example/work/portal")
+        self.assertEqual(build_weekly(batches, [], self.out)["high_fit_ready_to_contact"], 0)
+        self.edit_review(queue, client_project_url="https://new.example/work/portal")
+        result = build_weekly(batches, [], self.out)
+        self.assertEqual(result["high_fit_ready_to_contact"], 1)
+        self.assertEqual(result["shortfall_to_150"], 149)
 
     def test_refuses_synthetic_input_without_creating_review_files(self):
         with self.assertRaisesRegex(ValueError, "only live"):

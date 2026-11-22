@@ -14,13 +14,15 @@ from .evidence import SOURCE_SUPPORTED
 from .report import load_run
 from .score import EXCLUDED, NOT_RESEARCHABLE
 
-REVIEW_FIELDS = ("decision", "reason", "verified_person", "verified_role", "verified_person_url", "outreach_angle")
+CONTACT_FIELDS = ("verified_person", "verified_role", "verified_person_url", "outreach_angle")
+REVIEW_FIELDS = ("decision", "reason", "fit", "client_project_url", *CONTACT_FIELDS)
 FIELDS = (
     "domain", "company", "website", "source", "run_id", "tier", "score",
     "suggested_person", "suggested_role", "suggested_person_url", "service_evidence", "service_url",
     *REVIEW_FIELDS,
 )
 DECISIONS = {"", "contact", "skip", "needs_research"}
+FIT_LEVELS = {"", "strong", "plausible", "weak"}
 
 
 def read_reviews(path: Path) -> dict[str, dict[str, str]]:
@@ -33,8 +35,9 @@ def read_reviews(path: Path) -> dict[str, dict[str, str]]:
             domain = canonical_domain(row["domain"])
             review = {field: (row.get(field) or "").strip() for field in REVIEW_FIELDS}
             review["decision"] = review["decision"].lower()
-            if not domain or domain in reviews or review["decision"] not in DECISIONS:
-                raise ValueError(f"{path}:{line}: invalid domain, duplicate domain, or unsupported decision")
+            review["fit"] = review["fit"].lower()
+            if not domain or domain in reviews or review["decision"] not in DECISIONS or review["fit"] not in FIT_LEVELS:
+                raise ValueError(f"{path}:{line}: invalid or duplicate domain, unsupported decision, or unsupported fit")
             reviews[domain] = review
     return reviews
 
@@ -57,11 +60,21 @@ def review_row(company: dict, domain: str, source: str, run_id: str, review: dic
     }
 
 
-def ready_to_contact(row: dict) -> bool:
-    if row["decision"] != "contact" or not all(row[field] for field in REVIEW_FIELDS[2:]):
+def first_party_url(url: str, domain: str) -> bool:
+    try:
+        return urlsplit(url).scheme in {"http", "https"} and canonical_domain(url) == domain
+    except ValueError:
         return False
-    url = row["verified_person_url"]
-    return urlsplit(url).scheme in {"http", "https"} and canonical_domain(url) == row["domain"]
+
+
+def ready_to_contact(row: dict) -> bool:
+    return (row["decision"] == "contact" and all(row[field] for field in CONTACT_FIELDS)
+            and first_party_url(row["verified_person_url"], row["domain"]))
+
+
+def high_fit(row: dict) -> bool:
+    return (row["fit"] == "strong" and bool(row["reason"])
+            and first_party_url(row["client_project_url"], row["domain"]))
 
 
 def write_csv(path: Path, rows: list[dict]) -> None:
@@ -114,6 +127,7 @@ def build_weekly(batches: list[tuple[str, Path]], history: list[Path], out: Path
     rows.sort(key=lambda row: (row["tier"] in {EXCLUDED, NOT_RESEARCHABLE},
                                -(row["score"] or 0), row["domain"]))
     ready = []
+    qualified = []
     for row in rows:
         counter = counts[row["source"]]
         counter["unique_new"] += 1
@@ -121,17 +135,22 @@ def build_weekly(batches: list[tuple[str, Path]], history: list[Path], out: Path
         if ready_to_contact(row):
             ready.append(row)
             counter["ready"] += 1
+            if high_fit(row):
+                qualified.append(row)
+                counter["qualified"] += 1
     summary = {
         "unique_new_companies": len(rows),
         "ready_to_contact": len(ready),
         "contact_missing_verification_or_angle": sum(row["decision"] == "contact" for row in rows) - len(ready),
-        "weekly_ready_target": [150, 200],
-        "shortfall_to_150": max(0, 150 - len(ready)),
+        "high_fit_ready_to_contact": len(qualified),
+        "weekly_high_fit_target": [150, 200],
+        "shortfall_to_150": max(0, 150 - len(qualified)),
         "sources": dict(counts),
     }
     out.mkdir(parents=True, exist_ok=True)
     write_csv(queue_path, rows)
     write_csv(out / "ready.csv", ready)
+    write_csv(out / "qualified.csv", qualified)
     (out / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     return summary
 
