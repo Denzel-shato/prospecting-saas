@@ -112,6 +112,10 @@ def verdict(run: dict, m: dict) -> list[str]:
         return ["**REPLAY - NOT A FINDING.** Re-analysis of previously captured page snapshots with the current code. "
                 "It is not fresh discovery and not an independent live relevance result; evidence timestamps are the "
                 "original capture times. Use it only to compare code versions on identical inputs."]
+    if man["mode"] == "requalify":
+        return ["**OFFLINE REQUALIFICATION - NOT A NEW DISCOVERY RESULT.** Existing stored evidence was rescored "
+                "under another ICP without new web research. Original evidence may be incomplete for the new policy; "
+                "historical discovery counts are reused, not fresh metrics."]
     if man["mode"] == "synthetic_fixture":
         return ["**NOT A FINDING.** This run used FICTIONAL synthetic fixtures to exercise the pipeline. "
                 "It says nothing about real discovery quality, real companies, or ICP fit."]
@@ -143,6 +147,12 @@ def render_report(run: dict, m: dict) -> str:
     if man["mode"] == "synthetic_fixture":
         L.append("> **SYNTHETIC FIXTURE RUN — FICTIONAL DATA. PIPELINE CHECK ONLY. NOT PILOT FINDINGS.**")
         L.append("")
+    if man["mode"] == "requalify":
+        origin = man.get("requalification") or {}
+        L.append(f"> **OFFLINE REQUALIFICATION of stored evidence only.** Source run `{origin.get('source_run_id')}` "
+                 f"(original mode `{origin.get('source_mode')}`). No new discovery, HTTP fetch or extraction. "
+                 "Historical discovery counts are inherited, not new findings; missing evidence remains unknown.")
+        L.append("")
     if man["mode"] == "replay":
         rp = man.get("replay") or {}
         L.append(f"> **REPLAY OF SNAPSHOTS - network disabled.** capture `{rp.get('capture_id')}` "
@@ -155,7 +165,9 @@ def render_report(run: dict, m: dict) -> str:
     L += verdict(run, m)
     L.append("")
     L.append("## Scope and ICP")
-    L.append(f"ICP id: `{man['icp_id']}`. One ICP, no Gmail, no sending, no paid APIs. "
+    L.append(f"ICP id: `{man['icp_id']}`"
+             + (f" v{man['policy_version']} (digest `{man.get('policy_digest', 'unknown')}`)" if man.get("policy_version") else "")
+             + ". One ICP, no Gmail, no sending, no paid APIs. "
              f"Actual paid API spend: **${man['paid_api_spend_usd']:.2f}**. "
              f"Credentials detected in env but ignored: {man['credentials_detected_in_env_but_ignored'] or 'none'}.")
     L.append("")
@@ -180,11 +192,17 @@ def render_report(run: dict, m: dict) -> str:
              f"cap {man['max_candidates']}")
     cov = man.get("discovery_coverage")
     if cov and cov.get("pool"):
-        L.append(f"- discovery-record coverage of the pool ({cov['pool']}): description present "
-                 f"{cov['with_record_description']}, agency-like description {cov['agency_like_description']}, "
-                 f"vendor-like description {cov['vendor_like_description']}, listed on an exchange "
-                 f"{cov['listed_on_exchange']}. A low agency-like count means this source cannot supply "
-                 f"{man['max_candidates']} relevant agencies.")
+        if "agency_like_description" in cov:
+            L.append(f"- discovery-record coverage of the pool ({cov['pool']}): description present "
+                     f"{cov['with_record_description']}, agency-like description {cov['agency_like_description']}, "
+                     f"vendor-like description {cov['vendor_like_description']}, listed on an exchange "
+                     f"{cov['listed_on_exchange']}. A low agency-like count means this source cannot supply "
+                     f"{man['max_candidates']} relevant agencies.")
+        else:
+            L.append(f"- ICP-relative discovery-record coverage of the pool ({cov['pool']}): description present "
+                     f"{cov['with_record_description']}, target-like description {cov.get('target_like_description', 0)}, "
+                     f"negative-keyword description {cov.get('negative_like_description', 0)}, listed on an exchange "
+                     f"{cov['listed_on_exchange']}. These are record-term signals, NOT verified ICP matches.")
     L.append("")
     L.append("## Metrics (denominators shown; reference benchmarks are NOT adopted gates)")
     a = m["attempted"]
@@ -226,6 +244,21 @@ def render_report(run: dict, m: dict) -> str:
             L.append(f"| {i} | {x['domain']} | {x['total']} | {x['tier']} | {x.get('company_type', 'n/a')} | "
                      f"{why} | {dm_s} | {x['discovery']['method']} |")
     L.append("")
+    if man.get("policy_version"):
+        L.append("## Policy-specific qualification evidence (top five ranked)")
+        for c in ranked[:5]:
+            L.append(f"### `{c['domain']}`")
+            evidence_by_id = {e["id"]: e for e in c.get("evidence", [])}
+            for criterion in c.get("score", {}).get("criteria", []):
+                L.append(f"- {criterion['criterion']}: **{criterion['status']}** — {criterion['detail']}")
+                for eid in criterion.get("evidence_ids", [])[:2]:
+                    e = evidence_by_id.get(eid)
+                    if e:
+                        excerpt = str(e.get("excerpt", "")).replace("\\n", " ")[:140]
+                        L.append(f"  - evidence `{eid}` ({e['source_url']}): {excerpt}")
+        if not ranked:
+            L.append("_No eligible companies._")
+        L.append("")
     L.append("## Excluded / ineligible")
     for x in comps:
         if x["tier"] in (EXCLUDED, NOT_RESEARCHABLE):
