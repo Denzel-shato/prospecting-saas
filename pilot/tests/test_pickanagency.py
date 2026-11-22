@@ -136,6 +136,25 @@ class PickAnAgencyTests(unittest.TestCase):
         self.assertTrue(result["frontend.example"].attrs["directory_frontend_hint"])
         self.assertEqual(adapter.yield_stats["frontend_hint"], 1)
 
+    def test_software_focus_from_name_not_generic_service_category(self):
+        rows = [
+            record("CR Software Solutions", "https://software.example",
+                   services=["Software Development"], tagline="Reliable delivery"),
+            record("Branding and SEO Studio", "https://branding.example",
+                   services=["Software Development"], tagline="Digital campaigns"),
+            record("General Provider", "https://general.example",
+                   services=["Software Development"], tagline="We make things"),
+        ]
+        adapter = PickAnAgencyAdapter(MockClient({"results": rows}), worldwide=True,
+                                     search_terms=("software development",))
+        companies = {c.domain: c for c in adapter.discover()}
+        self.assertTrue(companies["software.example"].attrs["directory_software_focus_hint"])
+        self.assertFalse(companies["software.example"].attrs["directory_marketing_focus_hint"])
+        self.assertTrue(companies["branding.example"].attrs["directory_marketing_focus_hint"])
+        self.assertFalse(companies["branding.example"].attrs["directory_software_focus_hint"])
+        self.assertFalse(companies["general.example"].attrs["directory_software_focus_hint"])
+        self.assertEqual(companies["software.example"].attrs["directory_tagline"], "Reliable delivery")
+
     def test_does_not_guess_domain_from_directory_profile(self):
         row = record("Missing Site", None)
         adapter = PickAnAgencyAdapter(MockClient({"results": [row]}),
