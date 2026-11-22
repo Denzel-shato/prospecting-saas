@@ -122,6 +122,13 @@ class DecisionMakerAttributionTests(unittest.TestCase):
         body = '<div class="testimonial"><h3>Homeowners Hub</h3><p>Co-Founder / CEO</p></div>'
         self.assertEqual(self.dms(body, url="https://x.example/", home=True, name="EngineAwesome"), [])
 
+    def test_partner_suffix_does_not_hide_founder_role(self):
+        leaders = self.dms("<h3>John Example</h3><p>Co-Founder / Partner</p>"
+                           "<h3>Jane Example</h3><p>Partner</p>")
+        self.assertEqual([(leader.name, leader.role_class) for leader in leaders],
+                         [("John Example", "founder_ceo")])
+        self.assertEqual(self.dms("<p>John Example, Co-Founder / Partner at Another Firm</p>"), [])
+
     def test_testimonials_clients_partners_authors_are_not_company_leadership(self):
         cases = {
             "blockquote": "<blockquote>Great partner, would hire again and again.</blockquote><p>Jane Roe, CEO</p>",

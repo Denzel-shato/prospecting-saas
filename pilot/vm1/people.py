@@ -31,7 +31,7 @@ _ROLE = (
     r"(?:vp|vice president)(?: of)? engineering|"
     r"director of (?:engineering|delivery|technology)|engineering director|delivery director)"
 )
-_TITLE = rf"(?i:{_ROLE}(?:\s*(?:&|and|/|,)\s*{_ROLE})*)"  # title case-insensitive, names are not
+_TITLE = rf"(?i:{_ROLE}(?:\s*(?:&|and|/|,)\s*{_ROLE})*(?:\s*(?:&|and|/|,)\s*partner)?)"  # title case-insensitive, names are not
 _ORG_TAIL = r"(?:\s+(?i:at|of|@)\s+(?P<org>[\w&.'’ -]{2,50}))?"
 TITLE_ONLY_RE = re.compile(rf"^(?P<title>{_TITLE}){_ORG_TAIL}$")
 _NAME = r"[A-Z][a-zA-Z'’\-]+(?: [A-Z]\.)?(?: [A-Z][a-zA-Z'’\-]+){1,2}"
