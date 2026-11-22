@@ -1,0 +1,179 @@
+{
+  "schema_version": 1,
+  "id": "ecommerce-marketing-agency-us-v1",
+  "policy_version": "1.0.0",
+  "name": "Marketing agency -> US ecommerce storefront businesses",
+  "description": "US ecommerce storefronts with on-site purchase CTAs and identifiable retention or email capabilities; not an assertion they need marketing help.",
+  "seller": "Fictional marketing consultancy offering lifecycle, email and acquisition services to consumer ecommerce stores.",
+  "notes": "ILLUSTRATIVE POLICY ONLY: fictional seller, unvalidated target market; no independent precision or purchase-intent claim. US-only geography evidence is incomplete. Draft generation disabled.",
+  "geography": {
+    "countries": [
+      "US"
+    ],
+    "points": 20
+  },
+  "size": {
+    "band": [
+      5,
+      200
+    ],
+    "hard_max": 1000,
+    "in_band_points": 15,
+    "above_band_points": -10,
+    "below_band_points": 0
+  },
+  "target_type": {
+    "id": "ecommerce_storefront",
+    "label": "ecommerce storefront business",
+    "short_label": "storefront",
+    "identity": [
+      {
+        "claim": "company_type:storefront_signal",
+        "strength": "strong",
+        "points": 20,
+        "rule": "company type: ecommerce storefront business supported by multiple distinct on-site signals",
+        "min_distinct_values": 2
+      }
+    ],
+    "identity_missing_unknown": "identity: no sufficient evidence of ecommerce storefront business",
+    "identity_missing_reason": "no reliable evidence to establish ecommerce storefront business",
+    "capabilities": [
+      {
+        "id": "platform",
+        "claim": "capability:ecommerce_platform",
+        "points": 10
+      },
+      {
+        "id": "email_capture",
+        "claim": "capability:email_capture",
+        "points": 9
+      },
+      {
+        "id": "loyalty_subscription",
+        "claim": "capability:loyalty_or_subscription",
+        "points": 9
+      }
+    ],
+    "capability_cap": 25,
+    "min_capabilities": 1,
+    "capability_noun": "capabilities",
+    "capability_rule_prefix": "capability: ",
+    "capabilities_missing_unknown": "capabilities: no offered/relevant target capability evidenced",
+    "capabilities_missing_reason": "none of this policy's capability claims are present",
+    "qualified_reason": "first-party evidence supports ecommerce storefront business identity and required capabilities",
+    "mixed_identity_template": "mixed identity: target type alongside excluded profiles {values}",
+    "gate_cap_note": "missing target-type evidence cannot be offset by location, size, or other signals"
+  },
+  "screens": [
+    {
+      "rule": "staffing_recruiting",
+      "type_id": "staffing",
+      "claim": "negative:staffing_recruiting",
+      "detail": "homepage describes a staffing/recruiting business"
+    }
+  ],
+  "type_profiles": [
+    {
+      "id": "saas_vendor",
+      "claim": "company_type:saas_vendor_signal",
+      "min_distinct_values": 3,
+      "shielded_by_strong_identity": false,
+      "reason_template": "software product vendor signals {values}"
+    },
+    {
+      "id": "enterprise_software",
+      "claim": "company_type:enterprise_signal",
+      "min_distinct_values": 2,
+      "any_value": [
+        "listed_company"
+      ],
+      "shielded_by_strong_identity": false,
+      "reason_template": "large corporate/stock exchange signals {values}"
+    },
+    {
+      "id": "marketing_agency_competitor",
+      "claim": "entity_type:marketing_agency",
+      "min_distinct_values": 1,
+      "shielded_by_strong_identity": false,
+      "reason_template": "marketing agency competitor signal {values}"
+    },
+    {
+      "id": "ai_consultancy_competitor",
+      "claim": "entity_type:ai_automation_consultancy",
+      "min_distinct_values": 1,
+      "shielded_by_strong_identity": false,
+      "reason_template": "AI consultancy competitor signal {values}"
+    }
+  ],
+  "bonuses": [],
+  "penalties": [],
+  "decision_makers": {
+    "role_classes": [
+      "founder_ceo",
+      "other_leader"
+    ],
+    "points": 5
+  },
+  "tiers": {
+    "strong": 65,
+    "possible": 40
+  },
+  "strong_requirements": {
+    "geography": true,
+    "size_in_band": true,
+    "min_capabilities": 2
+  },
+  "prequalify": {
+    "positive_terms": [
+      "online store",
+      "ecommerce",
+      "e-commerce",
+      "online retailer",
+      "shopify",
+      "retail brand",
+      "shop now",
+      "direct to consumer"
+    ],
+    "negative_terms": [
+      "marketing agency",
+      "software development company",
+      "recruiter",
+      "advertising agency",
+      "enterprise platform"
+    ]
+  },
+  "page_selection": {
+    "relevance_tokens": [
+      "shop",
+      "stores",
+      "products",
+      "collections",
+      "shipping",
+      "returns",
+      "rewards",
+      "newsletter",
+      "loyalty",
+      "subscription",
+      "online",
+      "ecommerce",
+      "shopify",
+      "woocommerce",
+      "bigcommerce",
+      "brand"
+    ],
+    "extra_segments": {},
+    "slot_order": [
+      "about",
+      "service",
+      "work",
+      "service_other",
+      "team",
+      "contact",
+      "detail"
+    ],
+    "service_slug": null
+  },
+  "drafts": {
+    "enabled": false
+  }
+}
