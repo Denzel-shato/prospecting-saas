@@ -1,5 +1,15 @@
 # Account handoff — Prospecting SaaS / VM1 pilot (written 2026-11-22)
 
+> **NEWER STATUS (2026-11-22): This is an HISTORICAL checkpoint at b42227e, not the current state.**
+> Issue #5 policy wiring, prequalification, CLI validation, requalification, two illustrative ICPs,
+> reports and tests have since been implemented on the same feature branch.
+> GitHub Actions passed 211 offline tests and all 3 policy validations (run 45001588782).
+> For current branch status, limitations and next instructions read the final Issue #5 entry in
+> docs/HANDOFF.md and docs/ICP-FOUNDATION.md. Do not repeat items 1-8 of the historical
+> "NOT done" list below without checking the current code. Independent multi-industry lead
+> relevance remains unproven; the original human-labelled 5/18 result is unchanged.
+
+
 **Read this first.** It says exactly what exists, what is verified, and what is NOT done. Nothing here authorizes
 Phase 1, Gmail/sending, paid APIs, billing, auth or a SaaS UI. Those remain unapproved (see `CLAUDE.md`).
 
