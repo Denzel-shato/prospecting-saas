@@ -317,6 +317,12 @@ PRODUCT_FEATURE_RE = re.compile(
     r"\b(?:support(?:s|ed|ing)?|integrat\w+|compatible|sdks?|apis?|plugins?|extensions?|programming languages|"
     r"languages|frameworks?|libraries|templates?|our (?:platform|product|app|tool|software|dashboard|portal)|"
     r"the platform|lets you|allows you|enables you|features?|powered by|import|export)\b", re.I)
+# Product/feature wording that voids a client-services reading. Narrower than PRODUCT_FEATURE_RE: "support" and "API"
+# are ordinary client-service words ("we support websites", "we build APIs").
+CLIENT_SERVICE_VETO_RE = re.compile(
+    r"\b(?:sdks?|plugins?|extensions?|compatible|integrates? with|supports? (?:[\w.]+ ){0,2}?(?:languages|frameworks)|"
+    r"our (?:platform|product|app|tool|software|dashboard|portal)|the platform|lets you|allows you|enables you|"
+    r"powered by)\b", re.I)
 SELF_PREFIX_RE = re.compile(
     r"(?:\bwe(?:'|’)re|\bwe are|\bwe(?:'|’)ve become|\bis|\bare|\bas|\bour)\b(?:\s+[\w'’-]+){0,6}\s*$", re.I)
 ENTITY_BLOCKERS_RE = re.compile(
@@ -334,6 +340,10 @@ CLIENT_SERVICES_RE = re.compile(
     r"[^.!?]{0,100}?\bfor\s+(?:our\s+|their\s+)?(?:clients?\b|(?:[\w-]+[ -]){0,2}?"
     r"(?:startups?|founders|scale-?ups|businesses|brands|companies|enterprises|organi[sz]ations)\b)"
     r"|\bour clients\s+(?:include|are|range)\b"
+    # "We help organizations plan, build, improve, and support websites": the client noun is the object of "help".
+    r"|\bwe\s+(?:also\s+)?help\s+(?:[\w-]+\s+){0,2}?(?:organi[sz]ations|businesses|companies|brands|startups|founders|"
+    r"nonprofits|non-profits|institutions|clients?)\s+(?:[\w,&-]+\s+){0,4}?"
+    r"(?:plan|build|design|develop|improve|support|launch|ship|create|maintain|modernis[ez]e)\b"
     r"|\bwe\s+(?:partner|work)\s+with\s+(?:[\w-]+\s+){0,3}?(?:startups?|founders|scale-?ups|businesses|brands|"
     r"companies|enterprises|organi[sz]ations|clients?)\s+to\s+(?:design|build|develop|ship|launch|create|deliver)\b"
     r"|\bwe\s+(?:take on|run|lead|deliver|handle)\b[^.!?]{0,40}\b(?:consulting|client|project)\s+(?:engagements?|projects?|work)\b",
@@ -547,6 +557,10 @@ def _identity_evidence(company_key: str, snaps: list[PageSnapshot]) -> list[Evid
             if tp or (ctx & UNRELIABLE_CTX) or kind in NON_SELF_KINDS:
                 continue
             m = CLIENT_SERVICES_RE.search(text)
+            if m:
+                lo, hi = sentence_bounds(text, m.start(), m.end())
+                if CLIENT_SERVICE_VETO_RE.search(text[lo:hi]) or OWN_PRODUCT_RE.search(text[lo:hi]):
+                    m = None  # feature/own-product wording is not a statement of client services
             if not m and kind == "services":
                 m = CLIENT_SERVICE_HEADING_RE.fullmatch(text.strip())
             if m:

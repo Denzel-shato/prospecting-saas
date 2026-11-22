@@ -68,7 +68,7 @@ class StrictStrongPreserved(unittest.TestCase):
         self.assertEqual(r.tier, "strong")
 
     def test_plausible_studio_without_identity_stays_manual_review_not_strong(self):
-        body = ('<p>We help startups design and build digital products from Denver, CO 80202.</p>'
+        body = ('<p>We design and build digital products from Denver, CO 80202.</p>'
                 '<h2>What we do</h2><ul><li>Frontend development</li><li>Web applications</li></ul>')
         _, r = run(body)
         self.assertEqual(r.company_type, "unclear")
