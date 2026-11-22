@@ -121,6 +121,21 @@ class PickAnAgencyTests(unittest.TestCase):
         self.assertEqual(adapter.yield_stats["duplicate_domain"], 2)
         self.assertEqual(adapter.yield_stats["candidates"], 1)
 
+    def test_software_development_label_does_not_fake_frontend_hint(self):
+        data = {"results": [
+            record("General Software Agency", "https://general.example",
+                   services=["Software Development"], tagline="Custom software projects"),
+            record("Real Frontend Agency", "https://frontend.example",
+                   services=["Software Development", "React development"]),
+        ]}
+        adapter = PickAnAgencyAdapter(MockClient(data), worldwide=True,
+                                     search_terms=("custom software",))
+        result = {c.domain: c for c in adapter.discover()}
+        self.assertTrue(result["general.example"].attrs["directory_service_hint"])
+        self.assertFalse(result["general.example"].attrs["directory_frontend_hint"])
+        self.assertTrue(result["frontend.example"].attrs["directory_frontend_hint"])
+        self.assertEqual(adapter.yield_stats["frontend_hint"], 1)
+
     def test_does_not_guess_domain_from_directory_profile(self):
         row = record("Missing Site", None)
         adapter = PickAnAgencyAdapter(MockClient({"results": [row]}),
