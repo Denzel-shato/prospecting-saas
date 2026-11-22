@@ -182,9 +182,14 @@ class ReplayFetcher(PoliteFetcher):
         self.strict = strict
         self.replay = ReplayTransport(store)
         try:
-            unresolvable = set(store.read_manifest().get("unresolvable_hosts", []))
+            manifest = store.read_manifest()
+            unresolvable = set(manifest.get("unresolvable_hosts", []))
+            # Failed DNS/robots checks never reach RecordingTransport, hence have no
+            # per-response timestamp. Use the *recorded capture start*, not replay wall time.
+            self.capture_started_at = manifest["started_at"]
         except FileNotFoundError:
             unresolvable = set()
+            self.capture_started_at = ""
         super().__init__(self.replay, replay_resolver_for(unresolvable), min_delay=0.0, sleep=lambda s: None)
 
     @property
@@ -198,10 +203,14 @@ class ReplayFetcher(PoliteFetcher):
             if self.strict:
                 raise SnapshotMissing(f"{exc}. The current code selected a page that the capture did not fetch. "
                                       "Re-capture with a larger --capture-pages, or capture this page explicitly.") from exc
-            return FetchResult(url=url, error=f"snapshot_missing: {exc}", fetched_at=utc_now_iso())
+            return FetchResult(url=url, error=f"snapshot_missing: {exc}", fetched_at=self.capture_started_at)
         got = self.store.get("GET", res.final_url or url) or self.store.get("GET", url)
         if got:
             res.fetched_at = got[0]["captured_at"]  # provenance: ORIGINAL capture time, not replay time
+        else:
+            # No GET response is recorded for DNS failures, robots refusals or URL-level failures.
+            # These must also replay deterministically even when runs cross a wall-clock second.
+            res.fetched_at = self.capture_started_at
         return res
 
 
