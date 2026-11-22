@@ -209,6 +209,13 @@ class FirstPartyServiceIdentity(unittest.TestCase):
                 ev, _ = analyze([u.snap(html, url, home=False)])
                 self.assertNotIn("client_services", claims(ev, "entity_type:"))
 
+    def test_hypothetical_third_party_feature_is_not_an_offering(self):
+        html = ("<h2>Our services</h2><p>If they provide Inertia JS support for front-end development, "
+                "that would be a big change.</p>")
+        ev, _ = analyze([u.snap(html, "https://acme.example/services/", home=False)])
+        self.assertNotIn("frontend", claims(ev, "service:"))
+        self.assertIn("frontend", claims(ev, "mention:"))
+
     def test_product_pivot_overrides_a_broad_offering_heading(self):
         html = ("<h2>We build businesses.</h2>"
                 "<p>We're evolving beyond pure agency into product. We're building apps and SaaS solutions "

@@ -122,6 +122,9 @@ class DecisionMakerAttributionTests(unittest.TestCase):
         body = '<div class="testimonial"><h3>Homeowners Hub</h3><p>Co-Founder / CEO</p></div>'
         self.assertEqual(self.dms(body, url="https://x.example/", home=True, name="EngineAwesome"), [])
 
+    def test_department_name_is_not_a_person(self):
+        self.assertEqual(self.dms("<p>Managing Director, Growth Practice</p>"), [])
+
     def test_partner_suffix_does_not_hide_founder_role(self):
         leaders = self.dms("<h3>John Example</h3><p>Co-Founder / Partner</p>"
                            "<h3>Jane Example</h3><p>Partner</p>")

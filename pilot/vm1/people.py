@@ -55,7 +55,7 @@ ORG_WORDS = {
     "technology", "systems", "software", "digital", "ventures", "capital", "consulting", "agency",
     "media", "works", "network", "holdings", "enterprises", "industries", "global", "services",
     "platform", "collective", "foundation", "institute", "university", "bank", "press", "apps",
-    "app", "cloud", "data", "ai", "io", "corp", "company", "co", "homes", "health", "financial",
+    "app", "cloud", "data", "ai", "io", "corp", "company", "co", "homes", "health", "financial", "practice",
 }
 
 

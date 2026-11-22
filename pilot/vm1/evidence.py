@@ -443,6 +443,8 @@ def _offering(text: str, m: re.Match, kind: str, ctx, third_party: bool, page=No
         return False
     if tag == "typescript" and BACKEND_TYPESCRIPT_RE.search(sent) and not FRONTEND_TYPESCRIPT_RE.search(sent):
         return False
+    if re.match(r"\s*if they\b", sent, re.I):
+        return False  # a conditional about a third party cannot establish a current offering
     offer = OFFER_RE.search(sent) is not None
     if PRODUCT_FEATURE_RE.search(sent) and not offer:
         return False
