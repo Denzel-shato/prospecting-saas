@@ -253,6 +253,15 @@ class SnapshotReplayTests(unittest.TestCase):
         a, b = companies(self.t / "a")[0], companies(self.t / "b")[0]
         self.assertEqual(a, b)
 
+    def test_replay_failed_page_timestamp_does_not_use_wall_clock(self):
+        # robotsblocked.example has no captured homepage GET response; robots refused it.
+        # Repeated replays must not stamp current wall-clock time on the failure.
+        first = ReplayFetcher(self.store).fetch("https://robotsblocked.example/")
+        second = ReplayFetcher(self.store).fetch("https://robotsblocked.example/")
+        self.assertFalse(first.ok)
+        self.assertEqual(first.fetched_at, self.man["started_at"])
+        self.assertEqual(first.fetched_at, second.fetched_at)
+
     def test_original_provenance_is_preserved(self):
         run_replay(self.t / "snap", self.t / "rep")
         comps, _ = companies(self.t / "rep")
