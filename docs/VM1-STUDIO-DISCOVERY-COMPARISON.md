@@ -47,3 +47,13 @@ Reviewed the first ten visible Silver partners in the directory's displayed orde
 | 10 | Big Human | Plausible | [New York-area client product engineering](https://www.bighuman.com/about). |
 
 Result: **2 plausible, 6 skips, 2 unresolved**. Keep the directory as a manual seed source with US geography, agency scale, and client application work reviewed before import. This fixed-order check did not establish enough improvement to justify an automated directory integration.
+
+## Drupal.org organization API screen
+
+Tested the [documented public API](https://www.drupal.org/drupalorg/docs/apis/rest-and-other-apis) on 2026-11-22. The [Drupal.org terms](https://www.drupal.org/terms) describe CC BY-SA 2.0 for contributed site content. The test used an identifying User-Agent and kept the source payloads out of the repository.
+
+Fetched two sequential pages from `/api-d7/node.json?type=organization&limit=50&sort=changed&direction=DESC` with page numbers 0 and 1. The response contained 100 unique organization records and 94 distinct linked hostnames after removing the www prefix. The organization content type includes vendors, non-US organizations, and old listings as well as client-service agencies.
+
+Four linked organization profiles mentioned React, Next.js, or TypeScript in their descriptions. Three listed non-US headquarters. The fourth, [FocalGroove](https://www.focalgroove.com/), lists Concord, North Carolina and independently advertises client web app development using Next.js and React. Its [team page](https://www.focalgroove.com/team/) names CEO and co-founder Mark Shropshire, who leads web development and automation. Headcount is unverified.
+
+This was a description screen of recently edited records, not a complete qualification run. Agencies may offer relevant services without naming the stack in Drupal.org. The result demonstrates a technically usable endpoint, but only one verified lead through this screen. Defer implementing an adapter until there is evidence that a more targeted Drupal.org query can supply a viable sample for this ICP.
