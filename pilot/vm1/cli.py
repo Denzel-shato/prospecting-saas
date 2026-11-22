@@ -139,6 +139,11 @@ def main(argv: list[str] | None = None) -> int:
     rv.add_argument("--allow-stale", action="store_true")
     rv.add_argument("--max-secondary", type=int, default=4)
 
+    rq = sub.add_parser("requalify", help="OFFLINE: re-score a saved run's evidence under a new ICP (not fresh research)")
+    rq.add_argument("--from-run", required=True, help="existing VM1 run directory containing companies.json")
+    rq.add_argument("--icp", required=True, help="new ICP policy JSON file")
+    rq.add_argument("--out", default=str(ROOT / "runs"), help="output run directory root")
+
     val = sub.add_parser("validate-icp", help="validate and summarize an ICP JSON policy (offline)")
     val.add_argument("path", help="path to schema v1 or legacy flat ICP JSON")
 
@@ -156,7 +161,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"INVALID ICP: {exc}", file=sys.stderr)
             return 2
 
-    if a.cmd in ("run", "synthetic", "capture", "replay"):
+    if a.cmd in ("run", "synthetic", "capture", "replay", "requalify"):
         try:
             a.policy = _icp(a.icp)
         except PolicyError as exc:
@@ -165,6 +170,17 @@ def main(argv: list[str] | None = None) -> int:
 
     if a.cmd == "report":
         print(write_report(a.run, a.labels))
+        return 0
+
+    if a.cmd == "requalify":
+        from .requalify import requalify_run
+        try:
+            directory = requalify_run(a.from_run, a.policy, a.out)
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            print(f"REQUALIFY FAILED: {exc}", file=sys.stderr)
+            return 3
+        print(f"OFFLINE REQUALIFICATION (no network/discovery): {directory}")
+        print(f"report: {directory / 'report.md'}")
         return 0
 
     if a.cmd in ("capture", "replay"):
