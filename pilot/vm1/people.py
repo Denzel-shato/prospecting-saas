@@ -54,7 +54,7 @@ PROSE_FOUNDED_RE = re.compile(rf"(?:^|(?<=[.!?] ))(?P<org>[A-Z][\w&.'’ -]{{1,5
 
 NAME_STOPWORDS = {
     "our", "team", "about", "the", "and", "meet", "contact", "services", "company", "studio",
-    "founder", "ceo", "cto", "head", "director", "leadership", "us", "we", "careers", "blog",
+    "founder", "ceo", "cto", "head", "director", "leadership", "ownership", "level", "us", "we", "careers", "blog",
     "work", "read", "more", "get", "started", "view", "all", "senior", "lead", "manager",
     "engineer", "developer", "designer", "story", "chief", "officer", "managing", "vice",
     "president", "owner", "principal", "partner", "agency", "software", "digital", "web",
