@@ -73,6 +73,8 @@ def compute_metrics(run: dict, labels: dict[str, dict] | None = None) -> dict:
                                        and c["secondary_links_found"] == 0)
     m["exclusions"] = Counter(e["rule"] for c in comps for e in c["score"]["hard_exclusions"])
     m["tiers"] = Counter(c["tier"] for c in comps)
+    # Older runs predate the field: counted as "unrecorded", never inferred.
+    m["dispositions"] = Counter((c.get("score") or {}).get("disposition") or "unrecorded" for c in comps)
     eligible = [c for c in comps if c["tier"] not in (EXCLUDED, NOT_RESEARCHABLE)]
     m["dm_named"] = sum(1 for c in eligible if c["decision_makers"])
     m["eligible"] = len(eligible)
@@ -231,6 +233,8 @@ def render_report(run: dict, m: dict) -> str:
         L.append(f"| Decision-maker correct (labels) | {_frac(m['dm_correct'], m['dm_labeled'])} | >=70% top-1 | wrong-person rate {1 - m['dm_correct'] / m['dm_labeled']:.0%} (ref <=5%) |")
     L.append("")
     L.append("Tier counts: " + ", ".join(f"{k}={v}" for k, v in sorted(m["tiers"].items())))
+    L.append("Dispositions (confirmed disqualification vs missing information): "
+             + ", ".join(f"{k}={v}" for k, v in sorted(m["dispositions"].items())))
     L.append("")
     L.append("## Ranked top 20")
     ranked = sorted([x for x in comps if x["total"] is not None], key=lambda x: (-x["total"], x["domain"]))[:20]

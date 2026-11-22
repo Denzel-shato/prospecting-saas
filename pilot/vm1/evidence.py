@@ -103,7 +103,8 @@ SERVICE_PATTERNS: dict[str, list[re.Pattern]] = {
 SERVICE_PATTERNS.update(SERVICE_LINE_PATTERNS)
 ENTITY_RE = re.compile(
     r"\b(?:software (?:studio|agency|development (?:company|agency|studio|firm|shop))|product studio|"
-    r"digital (?:agency|studio|product studio)|development (?:studio|agency|shop)|"
+    r"digital (?:agency|studio|product studio|product agency|product consultancy)|product (?:agency|consultancy)|"
+    r"development (?:studio|agency|shop)|"
     r"web (?:agency|studio|development (?:company|agency))|app development (?:company|agency)|"
     r"engineering studio|design (?:and|&) development (?:studio|agency)|"
     r"front-?end (?:agency|studio|shop|consultancy)|react (?:agency|studio|consultancy|development (?:shop|agency))|"
@@ -145,6 +146,10 @@ SELF_SIZE_PATTERNS = [
                rf"(?:\s+{_SIZE_NOUN})?", re.I),
     re.compile(rf"\bwe(?: currently| now)? (?:have|employ|are) {_APPROX}{_NUM}\s+{_SIZE_NOUN}", re.I),
     re.compile(rf"\bour {_NUM}\s+{_SIZE_NOUN}", re.I),
+    # "Our 25-person team", "We are a 25-person studio": hyphenated headcount adjective, still self-referential.
+    re.compile(rf"\bour {_NUM}-person (?:[\w-]+ ){{0,2}}?{_TEAM_NOUN}\b", re.I),
+    re.compile(rf"\bwe(?:'|’)re (?:now |currently |only |just )?an? {_NUM}-person (?:[\w-]+ ){{0,2}}?{_TEAM_NOUN}\b", re.I),
+    re.compile(rf"\bwe are (?:now |currently |only |just )?an? {_NUM}-person (?:[\w-]+ ){{0,2}}?{_TEAM_NOUN}\b", re.I),
 ]
 HIST_RE = re.compile(
     r"\b(?:started|began|begin|founded|launched|grew|grow|grown|growth|growing|was|were|had|used to|once|"

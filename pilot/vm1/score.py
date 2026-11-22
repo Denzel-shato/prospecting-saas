@@ -62,6 +62,11 @@ class ScoreResult:
     policy_id: str = ""
     policy_version: str = ""
     criteria: list[dict] = field(default_factory=list)
+    # Why the tier is what it is, kept apart on purpose: DISQUALIFIED = evidence confirms a rule fails;
+    # NOT_ASSESSABLE = nothing could be read (unreachable/robots), so nothing is confirmed either way;
+    # MANUAL_REVIEW = plausible but type/identity not established (missing information, not a rejection);
+    # LOW_FIT = established target type, evidence-backed score below "possible"; QUALIFIED = possible/strong.
+    disposition: str = ""
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -161,7 +166,39 @@ def score_company(
                            first_party_domain=first_party_domain)
 
 
+DISQUALIFIED, NOT_ASSESSABLE, MANUAL_REVIEW, LOW_FIT, QUALIFIED = (
+    "disqualified", "not_assessable", "manual_review", "low_fit", "qualified")
+_MISSING_INFO_RULES = {"unreachable"}
+
+
+def _disposition(res: ScoreResult, target_type_id: str) -> str:
+    if res.tier == NOT_RESEARCHABLE:
+        return NOT_ASSESSABLE
+    if res.tier == EXCLUDED:
+        rules = {e["rule"] for e in res.hard_exclusions}
+        # A failed fetch alone confirms nothing about the company; any evidence-based exclusion does.
+        return NOT_ASSESSABLE if rules and rules <= _MISSING_INFO_RULES else DISQUALIFIED
+    if res.tier in ("possible", "strong"):
+        return QUALIFIED
+    return LOW_FIT if res.company_type == target_type_id else MANUAL_REVIEW
+
+
 def qualify_company(
+    evidence: list[Evidence],
+    decision_makers: list[DecisionMaker],
+    policy: IcpPolicy,
+    *,
+    homepage_ok: bool,
+    robots_blocked: bool = False,
+    first_party_domain: bool = True,
+) -> ScoreResult:
+    res = _qualify(evidence, decision_makers, policy, homepage_ok=homepage_ok, robots_blocked=robots_blocked,
+                   first_party_domain=first_party_domain)
+    res.disposition = _disposition(res, policy.target_type.id)
+    return res
+
+
+def _qualify(
     evidence: list[Evidence],
     decision_makers: list[DecisionMaker],
     policy: IcpPolicy,
