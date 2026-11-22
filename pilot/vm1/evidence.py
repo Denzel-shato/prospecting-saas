@@ -79,7 +79,7 @@ UK_POSTCODE_RE = re.compile(r"\b[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}\b")
 CA_POSTAL_RE = re.compile(r"\b[ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z]\s?\d[ABCEGHJ-NPRSTV-Z]\d\b")
 
 SERVICE_PATTERNS: dict[str, list[re.Pattern]] = {
-    "react": [re.compile(r"\bReact(?:\.?js)?\b(?!\s+to\b)"), re.compile(r"\breact\.?js\b", re.I)],
+    "react": [re.compile(r"\bReact(?:\.?js)?\b(?![ -]+(?:Native|to)\b)"), re.compile(r"\breact\.?js\b", re.I)],
     "nextjs": [re.compile(r"\bnext\.?js\b", re.I)],
     "typescript": [re.compile(r"\btypescript\b", re.I)],
     "frontend": [re.compile(r"\bfront[- ]?end\b", re.I)],
@@ -299,6 +299,12 @@ ENTITY_BLOCKERS_RE = re.compile(
     r"\b(?:integrat\w*|partner\w*|agencies|clients?|customers?|users?|members?|platform|product|tool|"
     r"trusted by|used by|works? with|compatible|marketplace|directory|reviews?|vs\.?|than|hire|find|like|"
     r"such as|including|alongside|for)\b", re.I)
+CLIENT_SERVICE_HEADING_RE = re.compile(
+    r"^(?:custom )?(?:web (?:app(?:lication)?s?|software)|software) development services for "
+    r"(?:[\w-]+ ){0,3}(?:teams|clients|startups|founders|businesses|brands|companies|enterprises|"
+    r"organi[sz]ations)\b[.!]?$", re.I)
+BACKEND_TYPESCRIPT_RE = re.compile(r"\b(?:nestjs|back[- ]?end|server[- ]side|node\.?js)\b", re.I)
+FRONTEND_TYPESCRIPT_RE = re.compile(r"\b(?:front[- ]?end|react(?:\.?js)?|next\.?js|browser|client[- ]side)\b", re.I)
 CLIENT_SERVICES_RE = re.compile(
     r"\bwe\s+(?:(?:also|primarily|mainly|mostly)\s+)?(?:design|build|develop|ship|deliver|create|engineer|craft)\b"
     r"[^.!?]{0,100}?\bfor\s+(?:our\s+|their\s+)?(?:clients?\b|(?:[\w-]+[ -]){0,2}?"
@@ -429,6 +435,8 @@ def _offering(text: str, m: re.Match, kind: str, ctx, third_party: bool, page=No
     sent = text[lo:hi]
     if own_product_reason(sent, kind, page, i, tag):
         return False
+    if tag == "typescript" and BACKEND_TYPESCRIPT_RE.search(sent) and not FRONTEND_TYPESCRIPT_RE.search(sent):
+        return False
     offer = OFFER_RE.search(sent) is not None
     if PRODUCT_FEATURE_RE.search(sent) and not offer:
         return False
@@ -490,6 +498,8 @@ def _identity_evidence(company_key: str, snaps: list[PageSnapshot]) -> list[Evid
             if tp or (ctx & UNRELIABLE_CTX) or kind in NON_SELF_KINDS:
                 continue
             m = CLIENT_SERVICES_RE.search(text)
+            if not m and kind == "services":
+                m = CLIENT_SERVICE_HEADING_RE.fullmatch(text.strip())
             if m:
                 out.append(_ev(company_key, "entity_type:client_services", "client_services", snap, text, m,
                                "company says it builds for clients (no studio/agency noun found)"))

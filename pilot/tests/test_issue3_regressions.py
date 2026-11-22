@@ -188,5 +188,45 @@ class PageSelection(unittest.TestCase):
         self.assertEqual(len(pick_secondary(self.HOME, "https://x.example/", 2)), 2)
 
 
+class FirstPartyServiceIdentity(unittest.TestCase):
+    def test_software_service_heading_with_client_audience_establishes_identity(self):
+        heading = "<h1>Custom web application development services for mid-market teams</h1>"
+        homepage = u.snap("<p>We offer custom software development.</p>" + ADDR)
+        services = u.snap(heading, "https://acme.example/services/web-app-development/", home=False)
+        ev, result = analyze([homepage, services])
+        self.assertIn("client_services", claims(ev, "entity_type:"))
+        self.assertEqual(result.tier, "possible")
+
+    def test_service_heading_in_client_work_or_testimonial_does_not_establish_identity(self):
+        heading = "<h1>Custom web application development services for mid-market teams</h1>"
+        excerpts = (
+            (heading, "https://acme.example/work/client-project/"),
+            (f"<blockquote>{heading}</blockquote>", "https://acme.example/services/web-app-development/"),
+            ("<h1>Custom web application development services</h1>", "https://acme.example/services/"),
+        )
+        for html, url in excerpts:
+            with self.subTest(html=html, url=url):
+                ev, _ = analyze([u.snap(html, url, home=False)])
+                self.assertNotIn("client_services", claims(ev, "entity_type:"))
+
+    def test_own_product_studio_stays_weak(self):
+        html = "<p>We're a development studio behind our own tabletop design product.</p>"
+        _, result = analyze([u.snap(html + ADDR)])
+        self.assertEqual(result.tier, "weak")
+
+    def test_mobile_react_and_backend_typescript_do_not_earn_frontend_credit(self):
+        html = ("<p>We build iOS and Android apps in React Native for clients.</p>"
+                "<p>We offer backend development using NestJS and TypeScript.</p>"
+                "<p>We deliver custom web application development for startups.</p>")
+        ev, _ = analyze([u.snap(html, "https://acme.example/services/")])
+        self.assertIn("web_app", claims(ev, "service:"))
+        self.assertFalse({"react", "typescript"} & claims(ev, "service:"))
+
+    def test_web_react_and_full_stack_typescript_still_earn_credit(self):
+        html = "<p>We offer frontend development with React and TypeScript alongside a Node.js API.</p>"
+        ev, _ = analyze([u.snap(html, "https://acme.example/services/")])
+        self.assertTrue({"react", "typescript"} <= claims(ev, "service:"))
+
+
 if __name__ == "__main__":
     unittest.main()
