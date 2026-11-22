@@ -148,3 +148,10 @@ Issue #5 (configurable ICP foundation) is STARTED, NOT COMPLETE, on `vm1-pilot-i
 The old 6-company replay is ONLY on the user's Mac and its data may not include ecommerce signals. Zero matches under another ICP is therefore not a live relevance conclusion.
 
 **Remaining milestone / decisions:** Do not add frontend SaaS, Gmail/sending, paid data, billing or auth without a separate milestone authorization. First validate the code against the user's real snapshots, inspect extraction quality and source coverage for other industries, and expand independent human labeling. Some requested tests (complete randomized differential across all old/new components, independent policy-invariant extraction with factual fixtures) can still be strengthened before treating Issue #5 as fully audited. There is no company-specific hack for Epic/Telos/Velvet, and no claim of live improvements.
+
+
+### Issue #5 follow-up — deterministic replay CI fix
+
+An automated run at 75becd5 exposed an intermittent test failure: replayed robots-blocked/DNS-failed homepage fetches used the current replay wall-clock timestamp when no original GET response was stored. Repeated replays across a second boundary therefore produced different companies.json output. vm1/snapshot.py now uses the stored capture start time as the deterministic provenance fallback for such failures, and tests/test_issue41_stabilization.py has an explicit failed-page timestamp regression test. No old assertion was weakened.
+
+**Verified:** GitHub Actions VM1 offline-tests run 45001805631 passed **212 tests**, all three ICP JSON validations, and the fictional synthetic pipeline, on code commit b6241265823c83f4d9b4b604ba38cce54e73d1be. This does not change the independent live relevance result of 5/18 (28%) for the earlier studio ICP. Next step on the user's Mac is an offline requalify of an existing saved six-company run; this must not be interpreted as live evidence for other industries.
