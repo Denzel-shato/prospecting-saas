@@ -14,15 +14,17 @@ from __future__ import annotations
 
 import csv
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 from urllib.parse import quote, urlencode, urlsplit
 
 from . import USER_AGENT
-from .canon import canonical_domain
+from .canon import canonical_domain, is_first_party_candidate
 from .fetch import NETWORK_ERRORS, PinnedTransport, Transport, utc_now_iso
 from .guard import FREE_KEYLESS, PaidApiBlocked, require_zero_cost
+from .htmlparse import parse_html
 from .netsafe import Resolver, UnsafeURL, default_resolver, validate_url
 
 AUTOMATED = "automated"
@@ -39,7 +41,7 @@ class Candidate:
     name: str
     url: str
     discovery_method: str  # automated | manual | synthetic_fixture
-    source: str  # wikidata | openstreetmap | manual_csv | synthetic
+    source: str  # discovery adapter name
     source_id: str = ""
     source_url: str = ""
     source_license: str = ""
@@ -53,9 +55,9 @@ class Candidate:
 
 
 class ApiClient:
-    """Tiny SSRF-safe JSON client for the two fixed keyless discovery hosts."""
+    """Tiny SSRF-safe JSON client for fixed keyless discovery hosts."""
 
-    ALLOWED_HOSTS = {"query.wikidata.org", "overpass-api.de"}
+    ALLOWED_HOSTS = {"query.wikidata.org", "overpass-api.de", "www.drupal.org"}
 
     def __init__(self, transport: Transport | None = None, resolver: Resolver | None = None,
                  timeout: float = 90.0, max_bytes: int = 25_000_000):
@@ -206,6 +208,83 @@ class WikidataAdapter(Adapter):
         return self.parse(data, utc_now_iso())
 
 
+class DrupalOrgAdapter(Adapter):
+    """Bounded organization-directory discovery for US client-service studios."""
+
+    name = "drupal_org"
+    ENDPOINT = "https://www.drupal.org/api-d7/node.json"
+    PAGE_SIZE = 50
+    MAX_PAGES = 4
+    terms_note = "Drupal.org REST API: identify the client, limit requests, and retain attribution."
+    license_note = "CC BY-SA 2.0 (Drupal.org contributed content)"
+    _SERVICES = re.compile(
+        r"\b(?:agency|studio|consulting|consultancy|development services|we (?:build|develop|design))\b", re.I)
+    _FRONTEND = re.compile(r"\b(?:React|Next\.?js|TypeScript|headless|decoupled)\b", re.I)
+
+    def __init__(self, client: ApiClient):
+        require_zero_cost(self.name, self.cost_class)
+        self.client = client
+        self.run_note = ""
+
+    def discover(self) -> list[Candidate]:
+        # Reuse the first-party geography patterns as directory screening hints only.
+        from .evidence import NON_US_RE, US_ADDRESS_RE, US_BASED_RE, US_COUNTRY_RE
+
+        found = {}
+        records = 0
+        retrieved_at = utc_now_iso()
+        for page in range(self.MAX_PAGES):
+            query = urlencode({"type": "organization", "limit": self.PAGE_SIZE, "sort": "changed",
+                               "direction": "DESC", "page": page})
+            data = self.client.request_json("GET", f"{self.ENDPOINT}?{query}")
+            rows = data.get("list") if isinstance(data, dict) else None
+            if not isinstance(rows, list):
+                raise DiscoveryBlocked("drupal_org: expected an organization list in the API response")
+            records += len(rows)
+            for row in rows:
+                if not isinstance(row, dict) or row.get("type") != "organization":
+                    continue
+                location = row.get("field_organization_headquarters")
+                link = row.get("field_link")
+                body = row.get("body")
+                name, node_id = row.get("title"), row.get("nid")
+                if not all(isinstance(value, str) and value.strip() for value in (location, name, node_id)):
+                    continue
+                if not node_id.isascii() or not node_id.isdecimal():
+                    continue
+                if not (US_COUNTRY_RE.search(location) or location.strip() == "US"
+                        or US_ADDRESS_RE.search(location) or US_BASED_RE.search(f"based in {location}")):
+                    continue
+                if NON_US_RE.search(f"based in {location}") and not US_COUNTRY_RE.search(location):
+                    continue
+                url = link.get("url") if isinstance(link, dict) else None
+                if not isinstance(url, str) or not url.strip().lower().startswith(("https://", "http://")):
+                    continue
+                url = url.strip()
+                domain = canonical_domain(url)
+                if not is_first_party_candidate(domain) or domain == "drupal.org":
+                    continue
+                html = body.get("value") if isinstance(body, dict) else None
+                if not isinstance(html, str):
+                    continue
+                source = f"https://www.drupal.org/node/{node_id}"
+                description = " ".join(parse_html(html, source).blocks)
+                if not self._SERVICES.search(description):
+                    continue
+                # Save flags and attribution only. The directory profile is not qualification evidence.
+                candidate = Candidate(name=name.strip(), url=url, domain=domain, discovery_method=AUTOMATED,
+                                      source=self.name, source_id=node_id, source_url=source,
+                                      source_license=self.license_note, retrieved_at=retrieved_at,
+                                      attrs={"directory_service_hint": True,
+                                             "directory_frontend_hint": bool(self._FRONTEND.search(description))})
+                found.setdefault(domain, candidate)
+            if not data.get("next") or not rows:
+                break
+        self.run_note = (f"{records} directory records screened; {len(found)} distinct candidate domains "
+                         "with US location and client-services wording in directory profiles")
+        return list(found.values())
+
+
 class OverpassAdapter(Adapter):
     """OpenStreetMap Overpass: US ``office=it`` objects that carry a ``website`` tag.
 
@@ -301,7 +380,7 @@ class SyntheticFixtureAdapter(Adapter):
                 for c in self.world["candidates"]]
 
 
-KEYLESS_REGISTRY = {"wikidata", "openstreetmap", "manual_csv", "synthetic"}
+KEYLESS_REGISTRY = {"drupal_org", "wikidata", "openstreetmap", "manual_csv", "synthetic"}
 
 
 def build_adapters(names: list[str], *, client: ApiClient | None = None,
@@ -321,6 +400,8 @@ def build_adapters(names: list[str], *, client: ApiClient | None = None,
                 f"Apollo, ...) are blocked in the $0 pilot.")
         if n == "wikidata":
             adapters.append(WikidataAdapter(client or ApiClient(), limit=wikidata_limit))
+        elif n == "drupal_org":
+            adapters.append(DrupalOrgAdapter(client or ApiClient()))
         elif n == "openstreetmap":
             adapters.append(OverpassAdapter(client or ApiClient(), acknowledged=ack_overpass_terms))
         elif n == "manual_csv":

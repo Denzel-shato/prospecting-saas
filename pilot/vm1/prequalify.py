@@ -52,6 +52,12 @@ def prequalify(attrs: dict, policy: IcpPolicy | dict | None = None) -> tuple[int
             score -= 3
             reasons.append("-3 record description reads like a product/platform/enterprise company" if is_baseline
                            else "-3 record description matches ICP's negative discovery terms")
+    if is_baseline and attrs.get("directory_service_hint"):
+        score += 3
+        reasons.append("+3 directory profile suggests client services")
+        if attrs.get("directory_frontend_hint"):
+            score += 1
+            reasons.append("+1 directory profile mentions relevant frontend or headless work")
     if attrs.get("listed_on_exchange"):
         score -= 4
         reasons.append("-4 listed on a stock exchange (record)")

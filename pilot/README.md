@@ -87,3 +87,17 @@ Edit `review.csv` with `contact`, `skip`, or `needs_research` and record the rea
 Use `fit=strong` only for a close match to the ICP. For the frontend-studio campaign, confirm an independent US studio in the target size band with client application work and a clear React, Next.js, or TypeScript frontend fit. In `reason`, record the facts that make the match strong, including size and geography evidence. Add the company-site case study or portfolio URL in `client_project_url`. Use `plausible` for an otherwise promising company with an important unknown, and `weak` for a poor match.
 
 Run the same command again to preserve your edits and regenerate the exports. `ready.csv` includes manually approved contacts with verified person details and an outreach angle. `qualified.csv` contains only the strong fits in that list with a documented reason and first-party client project URL. The summary counts only the qualified export toward the **150–200 high-fit leads per week** target. The command works offline and does not send outreach.
+
+## Automatic studio discovery experiment
+
+The opt-in `drupal_org` adapter screens up to 200 recently edited organization listings through the documented Drupal.org API. It collects organization names and websites with attribution, prioritizes directory hints, and uses the normal first-party crawler for qualification. Directory text, geography, and frontend hints do not become qualification evidence. The default source remains Wikidata.
+
+For a source-isolated test from `pilot/`:
+
+```sh
+python3 -m vm1 run --icp icp/frontend-studio.json --sources drupal_org --max-candidates 35
+```
+
+For a mixed candidate pool, use `--sources drupal_org,wikidata`. The first source listed retains provenance when the same canonical domain appears in both. Drupal is most relevant to the studio profile. Label eligible companies against the same high-fit criteria before comparing yield.
+
+The first probe retrieved 200 directory records. The adapter extracted 31 distinct candidate domains, six with frontend or headless hints. These are pre-crawl counts. The live pilot in the development workspace could not resolve the API host through VM1's direct transport, so end-to-end qualification and weekly yield remain unmeasured.
