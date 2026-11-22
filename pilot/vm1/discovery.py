@@ -15,6 +15,7 @@ from __future__ import annotations
 import csv
 import json
 import re
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -60,11 +61,13 @@ class ApiClient:
     ALLOWED_HOSTS = {"query.wikidata.org", "overpass-api.de", "www.drupal.org", "www.pickanagency.com"}
 
     def __init__(self, transport: Transport | None = None, resolver: Resolver | None = None,
-                 timeout: float = 90.0, max_bytes: int = 25_000_000):
+                 timeout: float = 90.0, max_bytes: int = 25_000_000,
+                 sleeper: Callable[[float], None] = time.sleep):
         self.transport = transport or PinnedTransport()
         self.resolver = resolver or default_resolver
         self.timeout = timeout
         self.max_bytes = max_bytes
+        self.sleeper = sleeper
         self.calls = 0
 
     def request_json(self, method: str, url: str, form: dict | None = None,
@@ -72,10 +75,16 @@ class ApiClient:
         host = urlsplit(url).hostname or ""
         if host not in self.ALLOWED_HOSTS:
             raise DiscoveryBlocked(f"host {host!r} is not an approved keyless discovery host")
-        try:
-            target = validate_url(url, self.resolver)
-        except UnsafeURL as exc:
-            raise DiscoveryBlocked(f"{host}: unsafe or unresolvable ({exc})") from exc
+        # Retry one transient DNS miss; each attempt must pass all SSRF checks.
+        # Never retry non-public IPs, malformed hosts, or HTTP rate-limit failures.
+        for attempt in range(2):
+            try:
+                target = validate_url(url, self.resolver)
+                break
+            except UnsafeURL as exc:
+                if str(exc) != "host did not resolve" or attempt:
+                    raise DiscoveryBlocked(f"{host}: unsafe or unresolvable ({exc})") from exc
+                self.sleeper(0.75)
         headers = {"User-Agent": USER_AGENT, "Accept": accept, "Accept-Encoding": "identity",
                    "Connection": "close"}
         body = None
