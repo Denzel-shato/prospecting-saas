@@ -36,8 +36,11 @@ class PickAnAgencyAdapter(Adapter):
         {"q": "software development"},
     )
     RESULT_LIMIT = 25
-    _TECH = re.compile(r"\b(?:react|next\.?js|typescript|front[\s-]?end|"
-                       r"web applications?|custom software|software development)\b", re.I)
+    # A "Software Development" directory category is NOT evidence of frontend
+    # specialization. Boost only when the listing names explicit frontend work
+    # or frontend technologies; first-party qualification still decides fit.
+    _TECH = re.compile(r"\b(?:react(?:\.?js)?|next\.?js|typescript|front[\s-]?end|"
+                       r"vue(?:\.?js)?|nuxt(?:\.?js)?|angular|svelte|headless)\b", re.I)
     _SERVICE = re.compile(r"\b(?:web design|web development|software development|"
                           r"app development|development|digital agency)\b", re.I)
     _US = {"us", "usa", "united states", "united states of america"}
