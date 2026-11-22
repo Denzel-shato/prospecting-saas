@@ -25,20 +25,32 @@ from .evidence import SOURCE_SUPPORTED, PageSnapshot, name_forms
 from .htmlparse import norm_ws
 
 _ROLE = (
-    r"(?:co-?founder|founder|chief executive officer|ceo|chief technology officer|cto|"
+    r"(?:co-?founder|founding partner|co-?owner|founder|chief executive officer|chief executive|ceo|chief technology officer|cto|"
     r"chief operating officer|coo|managing director|managing partner|president|owner|principal|"
     r"head of (?:engineering|delivery|product|technology)|"
     r"(?:vp|vice president)(?: of)? engineering|"
     r"director of (?:engineering|delivery|technology)|engineering director|delivery director)"
 )
-_TITLE = rf"(?i:{_ROLE}(?:\s*(?:&|and|/|,)\s*{_ROLE})*(?:\s*(?:&|and|/|,)\s*partner)?)"  # title case-insensitive, names are not
+_TITLE = (rf"(?i:{_ROLE}(?:\s*(?:&|and|/|,)\s*{_ROLE})*(?:\s*(?:&|and|/|,)\s*partner)?"
+          r"(?:\s*(?:&|and|/|\+)\s*(?:[A-Za-z]+ ){0,2}[A-Za-z]+)?)")  # title case-insensitive, names are not
 _ORG_TAIL = r"(?:\s+(?i:at|of|@)\s+(?P<org>[\w&.'’ -]{2,50}))?"
 TITLE_ONLY_RE = re.compile(rf"^(?P<title>{_TITLE}){_ORG_TAIL}$")
-_NAME = r"[A-Z][a-zA-Z'’\-]+(?: [A-Z]\.)?(?: [A-Z][a-zA-Z'’\-]+){1,2}"
+_UP, _LOW = "A-ZÀ-ÖØ-Þ", "a-zà-öø-ÿ"  # accented letters occur in real names (worldwide ICP)
+_TOK = rf"[{_UP}][{_LOW}{_UP}'’\-]+"
+_PART = r"(?:van|von|de|del|della|der|den|da|di|du|dos|le|la|ten|ter|bin|al|el)"
+_NAME = rf"{_TOK}(?: [{_UP}]\.)?(?: (?:{_PART} ){{0,2}}{_TOK}){{1,2}}"
 _SEP = r"\s*[,|–—\-:·•]\s*"
 NAME_TITLE_RE = re.compile(rf"^(?P<name>{_NAME}){_SEP}(?P<title>{_TITLE}){_ORG_TAIL}$")
 TITLE_NAME_RE = re.compile(rf"^(?P<title>{_TITLE}){_SEP}(?P<name>{_NAME})$")
 NAME_ONLY_RE = re.compile(rf"^{_NAME}$")
+# Prose self-descriptions. The organisation is REQUIRED and must match the target company (see org_matches), so a
+# client's or partner's executive ("Jane Doe is the CEO of Clientco") never attributes.
+_PROSE_ORG = r"(?P<org>[\w&.'’ -]{2,50}?)(?=[.,;!]|\s+(?:in|since|where|with|and)\b|$)"
+PROSE_IS_RE = re.compile(rf"(?:^|(?<=[.!?] ))(?P<name>{_NAME}) (?:is|serves as|has been) (?:the |our |a |an )?"
+                         rf"(?:[\w-]+ ){{0,2}}?(?P<title>{_TITLE}) (?:of|at) {_PROSE_ORG}")
+PROSE_IAM_RE = re.compile(rf"\b(?:I(?:'|’)m|I am) (?P<name>{_NAME}),? (?:the |a |an )?(?P<title>{_TITLE}) (?:of|at) {_PROSE_ORG}")
+PROSE_FOUNDED_RE = re.compile(rf"(?:^|(?<=[.!?] ))(?P<org>[A-Z][\w&.'’ -]{{1,50}}?) (?:was |is )?(?:co-?)?founded by "
+                              rf"(?P<name>{_NAME})(?=[.,;!]|\s+(?:in|and|with|after|back)\b|$)")
 
 NAME_STOPWORDS = {
     "our", "team", "about", "the", "and", "meet", "contact", "services", "company", "studio",
@@ -78,7 +90,7 @@ class DecisionMaker:
 
 def _role_class(title: str) -> tuple[str, int]:
     t = title.lower()
-    if re.search(r"founder|ceo|chief executive|owner|president|managing (?:director|partner)", t):
+    if re.search(r"found(?:er|ing)|ceo|chief executive|owner|president|managing (?:director|partner)", t):
         return "founder_ceo", 1
     if re.search(r"cto|chief technology|engineering|technology|delivery", t):
         return "cto_eng", 2
@@ -193,17 +205,36 @@ def find_decision_makers(snaps: list[PageSnapshot], limit: int = 3, *, company_k
             continue  # blog/docs/careers/case-study pages never name THIS company's decision-makers
         blocks = page.blocks
         for i, block in enumerate(blocks):
-            if len(block) > 120:
+            if len(block) > 300:
                 continue
             if (page.ctx_at(i) & THIRD_PARTY_CTX) or THIRD_PARTY_SECTION_RE.search(page.section_at(i)):
                 continue  # testimonial / client / partner / editorial structure
             if looks_like_quote_neighbour(page, i):
                 continue  # attribution line under a quotation
+            if looks_like_quote_neighbour(page, i):
+                continue
+            for pm in (PROSE_IS_RE.search(block), PROSE_IAM_RE.search(block)):
+                if pm and org_matches(pm.group("org"), company_key, company_name):
+                    add(pm.group("name"), pm.group("title"), snap, [block], "explicit_org_match")
+            fm = PROSE_FOUNDED_RE.search(block)
+            if fm and org_matches(fm.group("org"), company_key, company_name):
+                add(fm.group("name"), "Founder", snap, [block], "explicit_org_match")
+            if len(block) > 120:
+                continue
             m = NAME_TITLE_RE.match(block) or TITLE_NAME_RE.match(block)
             if m:
                 basis = credible_basis(snap, i, m.groupdict().get("org"), kind)
                 if basis:
                     add(m.group("name"), m.group("title"), snap, [block], basis)
+                continue
+            if TITLE_ONLY_RE.match(block) and i + 1 < len(blocks):
+                # Reversed card layout: the title block precedes the name block.
+                nxt = blocks[i + 1]
+                owned = i > 0 and NAME_ONLY_RE.match(blocks[i - 1])  # a name above owns this title (name-first card)
+                if not owned and NAME_ONLY_RE.match(nxt) and not (page.ctx_at(i + 1) & THIRD_PARTY_CTX):
+                    basis = credible_basis(snap, i, TITLE_ONLY_RE.match(block).groupdict().get("org"), kind)
+                    if basis:
+                        add(nxt, block, snap, [block, nxt], basis)
                 continue
             if NAME_ONLY_RE.match(block) and i + 1 < len(blocks):
                 nxt = blocks[i + 1]
@@ -216,7 +247,11 @@ def find_decision_makers(snaps: list[PageSnapshot], limit: int = 3, *, company_k
         # JSON-LD: only Person nodes affiliated with the TARGET organisation (never authors/reviews)
         raw = " ".join(page.jsonld_raw)
         for name, title in _jsonld_people(page, company_key, company_name):
-            if TITLE_ONLY_RE.match(title.strip()) and name in raw and title in raw:
+            # Raw JSON-LD may carry non-ASCII names as \\uXXXX escapes; accept either spelling of the same text.
+            def present(text: str) -> bool:
+                return text in raw or json.dumps(text)[1:-1] in raw
+
+            if TITLE_ONLY_RE.match(title.strip()) and present(name) and present(title):
                 add(name, title, snap, [name, title], "jsonld_org")
     ranked = sorted(found.values(), key=lambda d: d.rank)  # stable: page order within a rank
     return ranked[:limit]
