@@ -33,6 +33,21 @@ class EvidenceTests(unittest.TestCase):
         e.excerpt_parts = ["We build SaaS dashboards."]
         self.assertFalse(verify_evidence(e, {}), "missing page cannot verify")
 
+    def test_saas_advisory_label_is_not_web_app_delivery(self):
+        advisory = u.snap(
+            "<h1>Our Services</h1><h2>SaaS Scalability Consulting</h2>",
+            "https://x.example/services", home=False)
+        claims = ev_by_type(extract_evidence(K, [advisory]))
+        self.assertNotIn("service:web_app", claims)
+        self.assertIn("mention:web_app", claims)
+
+    def test_actual_saas_application_build_is_still_a_service(self):
+        delivering = u.snap(
+            "<h1>Our Services</h1><p>We build SaaS applications for clients.</p>",
+            "https://x.example/services", home=False)
+        claims = ev_by_type(extract_evidence(K, [delivering]))
+        self.assertIn("service:web_app", claims)
+
     def test_nothing_invented_from_empty_page(self):
         self.assertEqual(extract_evidence(K, [u.snap("<p>Coming soon.</p>")]), [])
 
