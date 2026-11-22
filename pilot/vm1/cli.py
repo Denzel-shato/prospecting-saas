@@ -16,13 +16,14 @@ from .discovery import ApiClient, DiscoveryBlocked, build_adapters
 from .fetch import PoliteFetcher
 from .guard import PaidApiBlocked, SpendLedger
 from .pipeline import RunConfig, run_pipeline
+from .policy import PolicyError, load_policy, summarize
 from .report import write_report
 
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def _icp(path: str) -> dict:
-    return json.loads(Path(path).read_text(encoding="utf-8"))
+def _icp(path: str):
+    return load_policy(path)
 
 
 def _pick_from_run(run_dir: str, names: str | None, domains: str | None):
@@ -60,7 +61,7 @@ def _dev_snapshot_cmd(a) -> int:
         else:
             raise SystemExit("capture needs --manual-csv or --from-run")
         fetcher = PoliteFetcher(RecordingTransport(PinnedTransport(), store), min_delay=a.min_delay)
-        man = capture(cands, fetcher, store, capture_pages=a.capture_pages, label=a.label)
+        man = capture(cands, fetcher, store, capture_pages=a.capture_pages, label=a.label, policy=a.policy)
         ok = sum(1 for c in man["companies"] if c["homepage_ok"])
         print(f"captured {len(man['companies'])} companies ({ok} homepages ok) -> {store.root}")
         print("snapshots are LOCAL, REDACTED, third-party page copies: keep them out of git and do not share them.")
@@ -71,7 +72,7 @@ def _dev_snapshot_cmd(a) -> int:
         print(f"REFUSED: {exc}", file=sys.stderr)
         return 5
     fetcher = ReplayFetcher(store, strict=not a.collect_missing)
-    cfg = RunConfig(icp=_icp(a.icp), out_dir=Path(a.out), mode="replay", max_candidates=len(man["candidates"]),
+    cfg = RunConfig(icp=a.policy, out_dir=Path(a.out), mode="replay", max_candidates=len(man["candidates"]),
                     max_secondary=a.max_secondary,
                     extra={"replay": {"capture_id": man["capture_id"], "captured_at": man["started_at"],
                                       "capture_ended_at": man["ended_at"], "snapshot_dir": str(store.root)}})
@@ -119,6 +120,7 @@ def main(argv: list[str] | None = None) -> int:
 
     c = sub.add_parser("capture", help="DEV: fetch pages politely and store redacted local snapshots (no findings)")
     c.add_argument("--out", required=True, help="snapshot directory (git-ignored), e.g. snapshots/seven")
+    c.add_argument("--icp", default=str(ROOT / "icp" / "frontend-studio.json"))
     c.add_argument("--manual-csv", help="name,url CSV")
     c.add_argument("--from-run", help="existing run dir whose candidates.json/companies.json supplies the companies")
     c.add_argument("--names", help="comma list of company names to pick from --from-run (case-insensitive)")
@@ -137,11 +139,29 @@ def main(argv: list[str] | None = None) -> int:
     rv.add_argument("--allow-stale", action="store_true")
     rv.add_argument("--max-secondary", type=int, default=4)
 
+    val = sub.add_parser("validate-icp", help="validate and summarize an ICP JSON policy (offline)")
+    val.add_argument("path", help="path to schema v1 or legacy flat ICP JSON")
+
     rp = sub.add_parser("report", help="regenerate report.md for a run")
     rp.add_argument("--run", required=True)
     rp.add_argument("--labels")
 
     a = p.parse_args(argv)
+
+    if a.cmd == "validate-icp":
+        try:
+            print(summarize(_icp(a.path)))
+            return 0
+        except PolicyError as exc:
+            print(f"INVALID ICP: {exc}", file=sys.stderr)
+            return 2
+
+    if a.cmd in ("run", "synthetic", "capture", "replay"):
+        try:
+            a.policy = _icp(a.icp)
+        except PolicyError as exc:
+            print(f"INVALID ICP: {exc}", file=sys.stderr)
+            return 2
 
     if a.cmd == "report":
         print(write_report(a.run, a.labels))
@@ -156,7 +176,7 @@ def main(argv: list[str] | None = None) -> int:
             from .fixture import build_synthetic
             world = ROOT / "fixtures" / "synthetic" / "world.json"
             adapters, fetcher = build_synthetic(world)
-            cfg = RunConfig(icp=_icp(a.icp), out_dir=Path(a.out), mode="synthetic_fixture")
+            cfg = RunConfig(icp=a.policy, out_dir=Path(a.out), mode="synthetic_fixture")
         else:
             names = [n for n in a.sources.split(",") if n.strip()]
             if a.manual_csv and "manual_csv" not in names:
@@ -164,7 +184,7 @@ def main(argv: list[str] | None = None) -> int:
             adapters = build_adapters(names, client=ApiClient(), ack_overpass_terms=a.ack_overpass_terms,
                                       manual_csv=a.manual_csv)
             fetcher = PoliteFetcher(min_delay=a.min_delay)
-            cfg = RunConfig(icp=_icp(a.icp), out_dir=Path(a.out), mode="live",
+            cfg = RunConfig(icp=a.policy, out_dir=Path(a.out), mode="live",
                             max_candidates=a.max_candidates, seed=a.seed)
     except PaidApiBlocked as exc:
         print(f"BLOCKED (paid/keyed source refused): {exc}", file=sys.stderr)
