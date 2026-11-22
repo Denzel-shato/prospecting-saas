@@ -27,7 +27,14 @@ class PickAnAgencyAdapter(Adapter):
                   "cache results, <1 request/second, no bulk harvesting")
     # Bounded hypotheses, not a claim about actual yield. The provider is
     # marketing/web-agency focused, not an exhaustive software-studio registry.
-    SEARCH_TERMS = ("web development", "software development", "digital agency")
+    # Prefer providers explicitly listing software development. Keyword searches
+    # broaden the pool without forcing the unrelated "Web Design" filter.
+    # "React" matches agency names and "Next.js" yielded nothing in a live probe.
+    SEARCH_QUERIES = (
+        {"service": "Software Development"},
+        {"q": "custom software"},
+        {"q": "software development"},
+    )
     RESULT_LIMIT = 25
     _TECH = re.compile(r"\b(?:react|next\.?js|typescript|front[\s-]?end|"
                        r"web applications?|custom software|software development)\b", re.I)
@@ -41,10 +48,13 @@ class PickAnAgencyAdapter(Adapter):
         self.client = client
         self.worldwide = worldwide
         self.sleeper = sleeper
-        self.search_terms = self.SEARCH_TERMS if search_terms is None else search_terms
-        if not self.search_terms or len(self.search_terms) > 3 or any(not isinstance(q, str) or
-                not q.strip() or len(q) > 60 for q in self.search_terms):
-            raise ValueError("pickanagency requires 1-3 short fixed search terms")
+        if search_terms is None:
+            self.search_queries = self.SEARCH_QUERIES
+        else:
+            if not search_terms or len(search_terms) > 3 or any(
+                    not isinstance(q, str) or not q.strip() or len(q) > 60 for q in search_terms):
+                raise ValueError("pickanagency requires 1-3 short fixed search terms")
+            self.search_queries = tuple({"q": q} for q in search_terms)
         self.yield_stats = {}
         self.run_note = ""
 
@@ -55,10 +65,10 @@ class PickAnAgencyAdapter(Adapter):
             "no_website", "duplicate_domain", "frontend_hint", "candidates")}
         self.yield_stats = stats
         stamp = utc_now_iso()
-        for i, term in enumerate(self.search_terms):
+        for i, query in enumerate(self.search_queries):
             if i:
                 self.sleeper(1.1)  # provider requests to stay below 1/s
-            params = urlencode({"q": term, "service": "Web Design", "limit": self.RESULT_LIMIT})
+            params = urlencode({**query, "limit": self.RESULT_LIMIT})
             query_url = f"{self.ENDPOINT}?{params}"
             response = self.client.request_json("GET", query_url)
             stats["queries"] += 1
@@ -114,7 +124,8 @@ class PickAnAgencyAdapter(Adapter):
                     attrs={"directory_service_hint": bool(self._SERVICE.search(wording)),
                            "directory_frontend_hint": frontend,
                            "country": country,
-                           "directory_name": self.SOURCE_NAME})
+                           "directory_name": self.SOURCE_NAME,
+                           "directory_discovery_query": dict(query)})
                 stats["frontend_hint"] += int(frontend)
         stats["candidates"] = len(seen)
         self.run_note = (f"Pick an Agency API: {stats['queries']} bounded queries, "
