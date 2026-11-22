@@ -74,6 +74,27 @@ class PolicySwitch(unittest.TestCase):
         agency = {"description": "software development agency outsourcing", "employees": 20}
         self.assertGreater(prequalify(agency)[0], prequalify(agency, ecommerce)[0])
 
+    def test_software_first_directory_tie_break_is_only_prioritization(self):
+        pol = load_policy("icp/frontend-studio-worldwide.json")
+        common = {"directory_service_hint": True, "directory_frontend_hint": False}
+        software = {**common, "directory_software_focus_hint": True}
+        marketing = {**common, "directory_marketing_focus_hint": True}
+        generic = dict(common)
+        self.assertEqual(prequalify(software, pol)[0], 5)
+        self.assertEqual(prequalify(generic, pol)[0], 3)
+        self.assertEqual(prequalify(marketing, pol)[0], 2)
+        self.assertIn("directory", " ".join(prequalify(software, pol)[1]))
+        source_pool = [
+            SimpleNamespace(domain="general.example", attrs=generic),
+            SimpleNamespace(domain="software.example", attrs=software),
+            SimpleNamespace(domain="marketing.example", attrs=marketing),
+        ]
+        self.assertEqual([r[0].domain for r in order_pool(source_pool, "seed", pol)],
+                         ["software.example", "general.example", "marketing.example"])
+        self.assertEqual(prequalify(generic, pol)[0], 3)  # unchanged generic records
+        non_agency_policy = changed_policy()
+        self.assertEqual(prequalify(software, non_agency_policy)[0], 5)  # target stays agency_studio
+
     def test_policy_size_rules_and_deterministic_order(self):
         ecommerce = changed_policy()
         attrs = {"description": "", "employees": 400}
