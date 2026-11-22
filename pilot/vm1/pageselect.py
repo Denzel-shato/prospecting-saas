@@ -10,8 +10,12 @@ Rules here:
   nothing, from a short CONTROLLED set of whole link-text phrases. Path wins over text; a contact or
   editorial path can never be promoted by its link text.
 * Editorial/legal/careers/docs/pricing/login paths and article-like slugs are never selected.
-* ICP relevance (custom software, web/mobile product development, frontend, dashboards, MVPs, ...) orders
-  service pages; a services hub is preferred, then ICP-relevant service detail pages.
+* ICP relevance orders service pages; a services hub is preferred, then ICP-relevant service detail pages.
+  WHAT counts as relevant (tokens), extra path synonyms, the slot order and the software "<x>-development-agency"
+  slug heuristic come from the ICP policy (vm1.policy.PageSelectionConfig); with no policy the frontend-studio
+  baseline applies. The safety rules below are shared and NOT configurable: a policy can add synonyms but can never
+  promote an editorial/legal/docs/pricing/login path, and the fetch budget, same-site rule, de-duplication and
+  robots handling live elsewhere (pipeline/fetch) and ignore the policy.
 * A slot plan keeps company-identity research alive inside the SAME budget: service, about, service,
   service-or-team, then work, contact. With no about page the slot goes to the next-best page.
 Deterministic, no network, no new fetch paths; fetching still goes through PoliteFetcher.
@@ -23,7 +27,10 @@ import re
 from dataclasses import asdict, dataclass, field
 from urllib.parse import unquote, urlsplit
 
+from functools import lru_cache
+
 from .canon import registrable_domain
+from .policy import PageSelectionConfig, baseline_policy
 
 _ASSET_RE = re.compile(r"\.(pdf|jpe?g|png|gif|svg|webp|zip|mp4|mov|docx?|xlsx?|pptx?)$", re.I)
 
@@ -51,11 +58,7 @@ WORK_SEGS = {"work", "our-work", "case-studies", "case-study", "portfolio", "pro
              "approach", "how-we-work", "process", "our-process", "our-approach", "showcase", "success-stories"}
 CONTACT_SEGS = {"contact", "contact-us", "get-in-touch", "hire-us", "start-a-project"}
 
-# Tokens that make a service page relevant to the ICP (outsourced web/frontend/product development).
-ICP_TOKENS = {"web", "mobile", "app", "apps", "software", "custom", "frontend", "react", "next", "nextjs",
-              "typescript", "saas", "product", "products", "dashboard", "dashboards", "platform", "platforms", "mvp",
-              "portal", "portals", "digital", "technology", "engineering", "development", "ecommerce", "fullstack"}
-DEV_WORDS = {"development", "engineering"}
+# ICP relevance tokens, development words and the slot order now come from the ICP policy (vm1.policy).
 
 # Controlled whole-phrase link texts (normalised); used only when the PATH carries no category.
 TEXT_CATEGORY = {
@@ -75,10 +78,42 @@ TEXT_CATEGORY = {
 # category -> priority (lower = earlier); used for the ranked candidate list and fill order
 PRIORITY = {"service_icp": 0, "service_hub": 1, "about": 2, "team": 3, "service_other": 4, "work": 5,
             "contact": 6, "detail": 7}
-# slot plan: identity (about) is guaranteed a slot early; a 3rd service page beats team only when it exists
-SLOT_ORDER = ["service", "about", "service", "service", "team", "service_other", "work", "contact", "detail"]
+# The slot plan (order in which page pools are served) is policy-configurable; baseline: service, about, service,
+# service, team, service_other, work, contact, detail. About/identity is guaranteed an early slot by that baseline.
 POOL_OF = {"service_icp": "service", "service_hub": "service", "service_other": "service_other", "about": "about",
            "team": "team", "work": "work", "contact": "contact", "detail": "detail"}
+
+
+@dataclass(frozen=True)
+class _Resolved:
+    tokens: frozenset
+    dev_words: frozenset
+    dev_people: frozenset
+    agency_words: frozenset
+    slug_enabled: bool
+    hub: frozenset
+    cat_segs: tuple
+    slot_order: tuple
+
+
+@lru_cache(maxsize=32)
+def _resolve(cfg: PageSelectionConfig) -> _Resolved:
+    extra = dict(cfg.extra_segments)
+    core = frozenset(cfg.service_slug[0]) if cfg.service_slug else frozenset()
+    people = (core | frozenset(cfg.service_slug[1])) if cfg.service_slug else frozenset()
+    agency = frozenset(cfg.service_slug[2]) if cfg.service_slug else frozenset()
+    return _Resolved(
+        tokens=frozenset(cfg.relevance_tokens), dev_words=core, dev_people=people, agency_words=agency,
+        slug_enabled=cfg.service_slug is not None, hub=SERVICE_HUB_SEGS | frozenset(extra.get("service_hub", ())),
+        cat_segs=(("about", ABOUT_SEGS | frozenset(extra.get("about", ()))),
+                  ("team", TEAM_SEGS | frozenset(extra.get("team", ()))),
+                  ("work", WORK_SEGS | frozenset(extra.get("work", ()))),
+                  ("contact", CONTACT_SEGS | frozenset(extra.get("contact", ())))),
+        slot_order=tuple(cfg.slot_order))
+
+
+def _r(ps: PageSelectionConfig | None) -> _Resolved:
+    return _resolve(ps if ps is not None else baseline_policy().page_selection)
 
 
 @dataclass
@@ -113,26 +148,23 @@ def canonical_key(url: str) -> str:
 _ARTICLE_STARTERS = {"how", "why", "what", "when", "best", "top", "guide", "tips", "ways", "vs", "versus", "complete",
                      "ultimate", "things", "reasons", "benefits", "checklist", "hire", "hiring", "cost", "costs",
                      "choose", "choosing", "ultimate", "should", "is", "are", "can", "do", "does"}
-_AGENCY_WORDS = {"agency", "agencies", "company", "studio", "services", "consultancy", "consultants", "firm",
-                 "experts", "partner", "partners", "outsourcing", "shop"}
-_DEV_ONLY = {"development", "engineering"}
-_DEV_PEOPLE = _DEV_ONLY | {"developer", "developers", "programming"}
 _SLUG_STOP = {"the", "our", "and", "of", "for", "in", "to", "with", "a", "an", "us", "about", "team", "api", "sdk",
               "docs", "guide", "tips", "portal", "login", "software"}
 
 
-def _dev_service_slug(tokens: list[str]) -> str | None:
+def _dev_service_slug(tokens: list[str], r: _Resolved | None = None) -> str | None:
     """Generic 'what an agency page is called' recognition, no company or platform list:
     '<anything>-development-agency', 'custom-web-application-development-company', 'react-native-development'.
     Returns a reason or None. Headline slugs ('how-to-choose-...', numbers) never qualify."""
-    if not 2 <= len(tokens) <= 5:
+    r = r or _r(None)
+    if not r.slug_enabled or not 2 <= len(tokens) <= 5:
         return None
     if tokens[0] in _ARTICLE_STARTERS or any(t.isdigit() for t in tokens):
         return None
     tset = set(tokens)
-    if tset & _DEV_PEOPLE and tset & _AGENCY_WORDS:
+    if tset & r.dev_people and tset & r.agency_words:
         return "development/agency-service slug (development word + agency/service word)"
-    if tset & _DEV_ONLY and len(tokens) <= 4 and (tset - _DEV_ONLY - _SLUG_STOP):
+    if tset & r.dev_words and len(tokens) <= 4 and (tset - r.dev_words - _SLUG_STOP):
         return "development-service slug (<specialty>-development)"
     return None
 
@@ -156,8 +188,10 @@ def _article_like(segs: list[str]) -> bool:
     return len(leaf_tokens) >= 5  # long slug = headline, not a section
 
 
-def classify_link(href: str, text: str, home_host: str = "") -> tuple[str, str, list] | None:
+def classify_link(href: str, text: str, home_host: str = "",
+                  ps: PageSelectionConfig | None = None) -> tuple[str, str, list] | None:
     """(category, reason, icp_terms) or None when the page should not be fetched."""
+    r = _r(ps)
     sp = urlsplit(href)
     host_labels = (sp.hostname or "").split(".")
     if len(host_labels) > 2 and host_labels[0] in EXCLUDED_SUBDOMAINS and host_labels[0] != (home_host or "").split(".")[0]:
@@ -172,32 +206,32 @@ def classify_link(href: str, text: str, home_host: str = "") -> tuple[str, str, 
             return None
     first = segs[0]
     toks = {t for s in segs for t in s.split("-") if t}
-    icp = sorted(toks & ICP_TOKENS)
+    icp = sorted(toks & r.tokens)
 
-    if first in SERVICE_HUB_SEGS:
+    if first in r.hub:
         if len(segs) == 1:
             return "service_hub", f"path segment '{first}' is a services hub", []
         if _article_like(segs[1:]) and len(segs[-1].split("-")) >= 7:
             return None
         child_toks = {t for s in segs[1:] for t in s.split("-") if t}
-        hits = sorted(child_toks & ICP_TOKENS)
+        hits = sorted(child_toks & r.tokens)
         if hits:
             return "service_icp", f"service page under '/{first}/' with ICP terms {hits}", hits
         return "service_other", f"service page under '/{first}/' without ICP terms", []
-    for cat, names in (("about", ABOUT_SEGS), ("team", TEAM_SEGS), ("work", WORK_SEGS), ("contact", CONTACT_SEGS)):
+    for cat, names in r.cat_segs:
         if first in names:
             if len(segs) == 1:
                 return cat, f"path segment '{first}'", []
             return "detail", f"sub-page of '/{first}/' ({cat}); lower value", []
     leaf_tokens = [t for t in segs[-1].split("-") if t]
-    why = _dev_service_slug(leaf_tokens) if len(segs) <= 2 else None
+    why = _dev_service_slug(leaf_tokens, r) if len(segs) <= 2 else None
     if why:
-        return "service_icp", f"{why}: '{segs[-1]}'", sorted(set(leaf_tokens) & (ICP_TOKENS | _DEV_PEOPLE | _AGENCY_WORDS))
+        return "service_icp", f"{why}: '{segs[-1]}'", sorted(set(leaf_tokens) & (r.tokens | r.dev_people | r.agency_words))
     if _article_like(segs):
         return None  # headline-style slug with no recognised section: never matched by link text
     leaf = segs[-1]
     leaf_toks = set(leaf.split("-"))
-    if len(segs) <= 2 and len(leaf.split("-")) <= 5 and (leaf_toks & DEV_WORDS) and (leaf_toks & (ICP_TOKENS - DEV_WORDS)):
+    if len(segs) <= 2 and len(leaf.split("-")) <= 5 and (leaf_toks & r.dev_words) and (leaf_toks & (r.tokens - r.dev_words)):
         return "service_icp", f"development-service page '{leaf}' with ICP terms {icp}", icp
     cat = TEXT_CATEGORY.get(_norm_text(text))
     if cat and len(segs) <= 2:
@@ -207,7 +241,8 @@ def classify_link(href: str, text: str, home_host: str = "") -> tuple[str, str, 
     return None
 
 
-def rank_candidates(links: list[tuple[str, str]], home_url: str) -> list[Selection]:
+def rank_candidates(links: list[tuple[str, str]], home_url: str,
+                    ps: PageSelectionConfig | None = None) -> list[Selection]:
     """All eligible same-site pages, best first (priority, ICP-hit count, page order)."""
     home_host = urlsplit(home_url).hostname or ""
     base = registrable_domain(home_host)
@@ -220,7 +255,7 @@ def rank_candidates(links: list[tuple[str, str]], home_url: str) -> list[Selecti
         key = canonical_key(href)
         if key == home_key or not sp.path.strip("/"):
             continue
-        got = classify_link(href, text, home_host)
+        got = classify_link(href, text, home_host, ps)
         if got is None:
             continue
         cat, reason, icp = got
@@ -237,8 +272,9 @@ def rank_candidates(links: list[tuple[str, str]], home_url: str) -> list[Selecti
     return [s for s, _ in rows]
 
 
-def plan_selection(ranked: list[Selection], limit: int) -> list[Selection]:
-    """Mark the pages to fetch (at most `limit`) using the identity-preserving slot plan."""
+def plan_selection(ranked: list[Selection], limit: int, ps: PageSelectionConfig | None = None) -> list[Selection]:
+    """Mark the pages to fetch (at most `limit`) using the policy's slot plan (baseline: identity-preserving)."""
+    slot_order = _r(ps).slot_order
     pools: dict[str, list[Selection]] = {}
     for s in ranked:
         pools.setdefault(POOL_OF[s.category], []).append(s)
@@ -247,9 +283,9 @@ def plan_selection(ranked: list[Selection], limit: int) -> list[Selection]:
     chosen: list[Selection] = []
     i = 0
     while len(chosen) < limit and any(pools.values()):
-        pool = SLOT_ORDER[i % len(SLOT_ORDER)]
+        pool = slot_order[i % len(slot_order)]
         i += 1
-        if i > len(SLOT_ORDER) * (limit + 2):
+        if i > len(slot_order) * (limit + 2):
             break
         if pools.get(pool):
             s = pools[pool].pop(0)

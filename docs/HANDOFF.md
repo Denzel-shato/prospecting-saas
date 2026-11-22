@@ -109,3 +109,6 @@ Completed (offline only): ICP-aware secondary-page selection (`pilot/vm1/pagesel
 Done: canonical URL dedup, agency-development slug recognition, own-product attribution, snapshot capture/replay
 (`vm1/snapshot.py`, CLI `capture`/`replay`), 29 new tests (194 total, all pass). Blockers: real seven-site capture needs
 the user's Mac. Next: run the commands in `docs/ISSUE-4.1-REPORT.md`, compare against `42077f0`, report. Not built: old-vs-new diff script.
+
+## 2026-11-22 checkpoint
+Issue #5 (configurable ICP foundation) is STARTED, NOT COMPLETE, on `vm1-pilot-issue5-icp-foundation`. Read `docs/ACCOUNT-HANDOFF.md` first; it lists what exists and the ordered remaining work.

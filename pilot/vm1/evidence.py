@@ -23,6 +23,8 @@ from typing import Iterable, Iterator
 from .context import (NON_OFFERING_KINDS, NON_SELF_KINDS, THIRD_PARTY_CTX, UNRELIABLE_CTX,
                       block_is_third_party, page_kind, sentence_bounds)
 from .discovery import Candidate
+from .facts import (AI_CONSULTANCY_RE, CUSTOMER_INTAKE, ECOMMERCE_PLATFORM, EMAIL_CAPTURE, LOCAL_SERVICE_SIGNALS,
+                    LOYALTY_SUBSCRIPTION, MARKETING_AGENCY_RE, SERVICE_LINE_PATTERNS, STOREFRONT_SIGNALS)
 from .htmlparse import PageData, norm_ws
 
 SOURCE_SUPPORTED = "source_supported"
@@ -88,6 +90,9 @@ SERVICE_PATTERNS: dict[str, list[re.Pattern]] = {
         r"\b(?:custom software|software development|product development|software engineering|"
         r"product engineering)\b", re.I)],
 }
+# Service lines of local/professional service businesses (vm1.facts). Whether a company OFFERS one is decided by the
+# same _offering() context rules as every other capability, so feature lists, docs and testimonials never count.
+SERVICE_PATTERNS.update(SERVICE_LINE_PATTERNS)
 ENTITY_RE = re.compile(
     r"\b(?:software (?:studio|agency|development (?:company|agency|studio|firm|shop))|product studio|"
     r"digital (?:agency|studio|product studio)|development (?:studio|agency|shop)|"
@@ -578,6 +583,42 @@ def _size_evidence(company_key: str, snaps: list[PageSnapshot], company_name: st
     return None
 
 
+def _self_identity_evidence(company_key: str, snaps: list[PageSnapshot], pat: re.Pattern, claim: str, value: str,
+                            note: str) -> list[Evidence]:
+    """First self-referential match of an identity phrase ("We are a growth marketing agency"), under the same
+    first-party attribution rules as the studio/agency identity: never a testimonial, partner, client, directory
+    listing, nav/footer/aside or a blog/docs/careers/case-study page."""
+    for snap in snaps:
+        for text, _i, kind, ctx, tp in _items(snap):
+            if tp or (ctx & UNRELIABLE_CTX) or kind in NON_SELF_KINDS:
+                continue
+            for m in pat.finditer(text):
+                if entity_self_referential(text, m):
+                    return [_ev(company_key, claim, value, snap, text, m, note)]
+    return []
+
+
+def _catalog_facts(company_key: str, snaps: list[PageSnapshot]) -> list[Evidence]:
+    """Policy-independent facts used by the non-software example profiles (vm1.facts). They are recorded for EVERY
+    company; whether any of them matters is decided later by an ICP policy, never here."""
+    out: list[Evidence] = []
+    out += _self_identity_evidence(company_key, snaps, MARKETING_AGENCY_RE, "entity_type:marketing_agency",
+                                   "marketing_agency", "self-referential marketing/advertising agency wording")
+    out += _self_identity_evidence(company_key, snaps, AI_CONSULTANCY_RE, "entity_type:ai_automation_consultancy",
+                                   "ai_automation_consultancy", "self-referential AI/automation agency or consultancy wording")
+    for claim, table, note in (
+            ("company_type:local_service_signal", LOCAL_SERVICE_SIGNALS,
+             "local service-business wording; one signal alone proves nothing (policies count distinct signals)"),
+            ("company_type:storefront_signal", STOREFRONT_SIGNALS,
+             "online-store wording; one signal alone proves nothing (policies count distinct signals)"),
+            ("capability:ecommerce_platform", ECOMMERCE_PLATFORM, "first-party statement naming its ecommerce platform"),
+            ("capability:email_capture", EMAIL_CAPTURE, "first-party email-capture offer"),
+            ("capability:loyalty_or_subscription", LOYALTY_SUBSCRIPTION, "first-party rewards/loyalty/subscription offer"),
+            ("capability:customer_intake", CUSTOMER_INTAKE, "first-party scheduling/booking/quote-request wording")):
+        out += _signal_evidence(company_key, snaps, claim, table, note)
+    return out
+
+
 def extract_evidence(company_key: str, snaps: list[PageSnapshot],
                      company_name: str | None = None) -> list[Evidence]:
     out: list[Evidence] = []
@@ -658,6 +699,7 @@ def extract_evidence(company_key: str, snaps: list[PageSnapshot],
     if cw:
         out.append(cw)
     out += mentions
+    out += _catalog_facts(company_key, snaps)  # appended LAST: never displaces or reorders the legacy evidence
     return out[:MAX_EVIDENCE_PER_COMPANY]
 
 
