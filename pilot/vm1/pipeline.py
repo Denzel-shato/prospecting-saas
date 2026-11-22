@@ -21,7 +21,7 @@ from .evidence import (PageSnapshot, apply_discovery_record, extract_evidence, v
                        verify_excerpt_parts)
 from .fetch import PoliteFetcher
 from .guard import SpendLedger, credentials_present
-from .pageselect import plan_selection, rank_candidates
+from .pageselect import canonical_key, plan_selection, rank_candidates
 from .prequalify import coverage, order_pool
 from .htmlparse import PageData, parse_html
 from .people import find_decision_makers
@@ -130,6 +130,7 @@ def research_company(cand: Candidate, fetcher: PoliteFetcher, icp: dict, max_sec
         # fetched but empty (e.g. JS-rendered)" can be told apart from the run artifacts alone.
         rec["secondary_candidates"] = [c.to_dict() for c in ranked_sel[:15]]
         rec["homepage_text_blocks"] = len(page.blocks)
+        fetched_keys = {canonical_key(url): url}  # duplicate FINAL destinations (redirects) are not double-counted
         for sec in picks:
             sres = fetcher.fetch(sec)
             sel = by_url[sec]
@@ -140,8 +141,13 @@ def research_company(cand: Candidate, fetcher: PoliteFetcher, icp: dict, max_sec
                 spage = parse_html(sres.text or "", surl)
                 entry.update(final_url=surl, text_blocks=len(spage.blocks), text_chars=len(sres.text or ""),
                              links=len(spage.links))
-                snaps.append(PageSnapshot(url=surl, fetched_at=sres.fetched_at, page=spage))
-                pages_by_url[surl] = spage
+                dup = fetched_keys.get(canonical_key(surl))
+                if dup is not None:
+                    entry["duplicate_of"] = dup  # same page already fetched: spent a request, adds no snapshot
+                else:
+                    fetched_keys[canonical_key(surl)] = surl
+                    snaps.append(PageSnapshot(url=surl, fetched_at=sres.fetched_at, page=spage))
+                    pages_by_url[surl] = spage
             rec["secondary"].append(entry)
 
     evidence = extract_evidence(key, snaps, company_name=cand.name)
@@ -259,6 +265,11 @@ def run_pipeline(cfg: RunConfig, adapters: list[Adapter], fetcher: PoliteFetcher
         "possible_same_company_different_domain": possible_same,
         "sending": "none: this prototype contains no email/Gmail/SMTP code path",
     }
+    if cfg.mode == "replay":
+        manifest["replay"] = dict(cfg.extra.get("replay") or {}, network="disabled",
+                                  counts_as_fresh_discovery=False, counts_as_independent_live_result=False)
+        manifest["replay_missing_pages"] = list(getattr(fetcher, "missing", []))
+        manifest["counts"]["selected_replay"] = sum(1 for c in selected if c.discovery_method == "replay")
     _write_json(out / "manifest.json", manifest)
     _write_json(out / "candidates.json", [asdict(c) for c in selected])
     _write_json(out / "rejected.json", rejected)

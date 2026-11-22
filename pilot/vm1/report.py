@@ -108,6 +108,10 @@ def compute_metrics(run: dict, labels: dict[str, dict] | None = None) -> dict:
 def verdict(run: dict, m: dict) -> list[str]:
     man = run["manifest"]
     c = man["counts"]
+    if man["mode"] == "replay":
+        return ["**REPLAY - NOT A FINDING.** Re-analysis of previously captured page snapshots with the current code. "
+                "It is not fresh discovery and not an independent live relevance result; evidence timestamps are the "
+                "original capture times. Use it only to compare code versions on identical inputs."]
     if man["mode"] == "synthetic_fixture":
         return ["**NOT A FINDING.** This run used FICTIONAL synthetic fixtures to exercise the pipeline. "
                 "It says nothing about real discovery quality, real companies, or ICP fit."]
@@ -138,6 +142,14 @@ def render_report(run: dict, m: dict) -> str:
     L.append("")
     if man["mode"] == "synthetic_fixture":
         L.append("> **SYNTHETIC FIXTURE RUN — FICTIONAL DATA. PIPELINE CHECK ONLY. NOT PILOT FINDINGS.**")
+        L.append("")
+    if man["mode"] == "replay":
+        rp = man.get("replay") or {}
+        L.append(f"> **REPLAY OF SNAPSHOTS - network disabled.** capture `{rp.get('capture_id')}` "
+                 f"(captured {rp.get('captured_at')}). Not fresh discovery; not an independent live result.")
+        if man.get("replay_missing_pages"):
+            L.append(f"> **INCOMPLETE: {len(man['replay_missing_pages'])} page(s) the current code wanted were not "
+                     f"captured:** {', '.join(man['replay_missing_pages'][:10])}")
         L.append("")
     L.append("## Verdict")
     L += verdict(run, m)

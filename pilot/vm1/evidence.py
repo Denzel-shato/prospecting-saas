@@ -380,12 +380,50 @@ def _adjacent_offer(page, i: int) -> bool:
     return False
 
 
-def _offering(text: str, m: re.Match, kind: str, ctx, third_party: bool, page=None, i: int = -1) -> bool:
+# ---- first-party product development is NOT a client service (Issue #4.1) ----------------------------------
+_PRODUCT_NOUN = r"(?:saas|apps?|products?|platforms?|startups?)"
+OWN_PRODUCT_RE = re.compile(
+    r"\b(?:our|my) own\b"
+    r"|\b(?:our|my) (?:flagship|first|latest|newest|in-house|internal) (?:[\w-]+ ){0,2}" + _PRODUCT_NOUN + r"\b"
+    r"|\bwe(?:'ve| have)?\s+(?:also |currently |now |recently |previously )?(?:built|launched|created|run|operate|own|"
+    r"bootstrapped|founded|maintain)\s+(?:a|an|our|the|several|multiple|two|three|\d+)\s+(?:[\w-]+\s+){0,2}" + _PRODUCT_NOUN + r"\b"
+    r"|\bwe(?:'re| are)\s+(?:also |currently |now )?(?:building|developing|launching|running|operating)\s+"
+    r"(?:a|an|our|the)\s+(?:[\w-]+\s+){0,2}" + _PRODUCT_NOUN + r"\b"
+    r"|\b(?:side projects?|in-house products?|internal tools?|portfolio of products|venture studio|"
+    r"products? (?:we|that we)(?:'ve| have)? (?:built|launched|run|own|operate))\b", re.I)
+# "we build ... SaaS / products" with no statement of who it is built FOR is ambiguous: client work or own product.
+BARE_PRODUCT_RE = re.compile(
+    r"\bwe\s+(?:[\w-]+\s+){0,2}(?:build|develop|create|ship|launch|make)\b[^.!?]{0,80}?"
+    r"\b(?:saas|(?:software |digital |web |mobile )?products?)\b", re.I)
+CLIENT_ANCHOR_RE = re.compile(
+    r"\bclients?\b|\bfor (?:our |your |their |early[- ]stage |growth[- ]stage |funded |ambitious |[\w-]+ ){0,2}"
+    r"(?:startups?|founders?|businesses|brands|companies|enterprises|organi[sz]ations|merchants|retailers|agencies|"
+    r"entrepreneurs)\b|\byour (?:product|idea|business|brand|app|startup|vision)\b|\bhire us\b|"
+    r"\bpartner(?:s|ing)? with\b|\bengagements?\b", re.I)
+PRODUCT_AMBIGUITY_TAGS = {"web_app", "custom_software"}
+
+
+def own_product_reason(sent: str, kind: str, page, i: int, tag: str | None) -> str | None:
+    """Why this sentence may describe the company's OWN product rather than a service sold to clients."""
+    if OWN_PRODUCT_RE.search(sent):
+        return "wording describes the company's own/first-party product development, not a client service"
+    if tag in PRODUCT_AMBIGUITY_TAGS and BARE_PRODUCT_RE.search(sent) and not (
+            CLIENT_ANCHOR_RE.search(sent) or kind == "services" or _adjacent_offer(page, i)
+            or any(entity_self_referential(sent, e) for e in ENTITY_RE.finditer(sent))):
+        return ("'we build ... products/SaaS' names no client: could be the company's own product; "
+                "not attributed as a client service without a client anchor or services context")
+    return None
+
+
+def _offering(text: str, m: re.Match, kind: str, ctx, third_party: bool, page=None, i: int = -1,
+              tag: str | None = None) -> bool:
     """True when the technology match sits in wording where the company offers it to clients."""
     if third_party or (ctx & UNRELIABLE_CTX) or kind in NON_OFFERING_KINDS:
         return False
     lo, hi = sentence_bounds(text, m.start(), m.end())
     sent = text[lo:hi]
+    if own_product_reason(sent, kind, page, i, tag):
+        return False
     offer = OFFER_RE.search(sent) is not None
     if PRODUCT_FEATURE_RE.search(sent) and not offer:
         return False
@@ -417,13 +455,17 @@ def _service_evidence(company_key: str, snaps: list[PageSnapshot], tag: str, pat
                 m = pat.search(text)
                 if not m:
                     continue
-                if _offering(text, m, kind, ctx, tp, snap.page, _i):
+                if _offering(text, m, kind, ctx, tp, snap.page, _i, tag):
                     return _ev(company_key, f"service:{tag}", tag, snap, text, m,
                                "company describes offering this to clients"), None
                 if mention is None:
+                    lo, hi = sentence_bounds(text, m.start(), m.end())
+                    why = (own_product_reason(text[lo:hi], kind, snap.page, _i, tag)
+                           if not (tp or (ctx & UNRELIABLE_CTX) or kind in NON_OFFERING_KINDS) else None)
                     mention = _ev(company_key, f"mention:{tag}", tag, snap, text, m,
-                                  "keyword present WITHOUT evidence the company offers it as a client service "
-                                  "(feature/docs/testimonial/client-work/generic wording); weight 0")
+                                  (why + "; " if why else "keyword present WITHOUT evidence the company offers it as "
+                                   "a client service (feature/docs/testimonial/client-work/generic wording); ")
+                                  + "weight 0")
     return None, mention
 
 

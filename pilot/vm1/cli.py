@@ -25,6 +25,77 @@ def _icp(path: str) -> dict:
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
+def _pick_from_run(run_dir: str, names: str | None, domains: str | None):
+    from .discovery import Candidate
+    rd = Path(run_dir)
+    rows = json.loads((rd / "candidates.json").read_text(encoding="utf-8"))
+    want_n = [n.strip().casefold() for n in (names or "").split(",") if n.strip()]
+    want_d = [d.strip().casefold() for d in (domains or "").split(",") if d.strip()]
+    if not want_n and not want_d:
+        picked = rows
+    else:
+        picked, missing = [], []
+        for n in want_n:
+            hit = [r for r in rows if r["name"].casefold() == n] or [r for r in rows if n in r["name"].casefold()]
+            (picked.append(hit[0]) if len(hit) == 1 else missing.append(f"{n!r} ({len(hit)} matches)"))
+        for d in want_d:
+            hit = [r for r in rows if (r.get("domain") or "").casefold() == d]
+            (picked.append(hit[0]) if hit else missing.append(f"{d!r} (not found)"))
+        if missing:
+            raise SystemExit("could not resolve in candidates.json: " + ", ".join(missing))
+    return [Candidate(**r) for r in picked]
+
+
+def _dev_snapshot_cmd(a) -> int:
+    from .snapshot import (RecordingTransport, ReplayAdapter, ReplayFetcher, SnapshotMissing, SnapshotStale,
+                           SnapshotStore, capture, check_fresh)
+    from .fetch import PinnedTransport
+    store = SnapshotStore(a.out if a.cmd == "capture" else a.snapshots)
+    if a.cmd == "capture":
+        if a.from_run:
+            cands = _pick_from_run(a.from_run, a.names, a.domains)
+        elif a.manual_csv:
+            from .discovery import ManualCsvAdapter
+            cands = ManualCsvAdapter(a.manual_csv).discover()
+        else:
+            raise SystemExit("capture needs --manual-csv or --from-run")
+        fetcher = PoliteFetcher(RecordingTransport(PinnedTransport(), store), min_delay=a.min_delay)
+        man = capture(cands, fetcher, store, capture_pages=a.capture_pages, label=a.label)
+        ok = sum(1 for c in man["companies"] if c["homepage_ok"])
+        print(f"captured {len(man['companies'])} companies ({ok} homepages ok) -> {store.root}")
+        print("snapshots are LOCAL, REDACTED, third-party page copies: keep them out of git and do not share them.")
+        return 0
+    try:
+        man = check_fresh(store, None if a.allow_stale else a.max_age_days)
+    except SnapshotStale as exc:
+        print(f"REFUSED: {exc}", file=sys.stderr)
+        return 5
+    fetcher = ReplayFetcher(store, strict=not a.collect_missing)
+    cfg = RunConfig(icp=_icp(a.icp), out_dir=Path(a.out), mode="replay", max_candidates=len(man["candidates"]),
+                    max_secondary=a.max_secondary,
+                    extra={"replay": {"capture_id": man["capture_id"], "captured_at": man["started_at"],
+                                      "capture_ended_at": man["ended_at"], "snapshot_dir": str(store.root)}})
+    out_root = Path(a.out)
+    before = set(out_root.iterdir()) if out_root.exists() else set()
+    try:
+        result = run_pipeline(cfg, [ReplayAdapter(store)], fetcher, SpendLedger())
+    except SnapshotMissing as exc:
+        import shutil
+        for d in (set(out_root.iterdir()) - before if out_root.exists() else set()):  # no half-finished run left behind
+            if d.is_dir() and not (d / "companies.json").exists():
+                shutil.rmtree(d, ignore_errors=True)
+        print(f"REPLAY FAILED (nothing was fetched or invented): {exc}", file=sys.stderr)
+        return 4
+    report = write_report(result["run_dir"], None)
+    print(f"REPLAY (network disabled) run dir: {result['run_dir']}\nreport:  {report}")
+    if fetcher.missing:
+        print(f"INCOMPLETE: {len(fetcher.missing)} uncaptured page(s):", file=sys.stderr)
+        for u in fetcher.missing:
+            print(f"  - {u}", file=sys.stderr)
+        return 4
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="vm1", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -46,6 +117,26 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--icp", default=str(ROOT / "icp" / "frontend-studio.json"))
     s.add_argument("--out", default=str(ROOT / "runs"))
 
+    c = sub.add_parser("capture", help="DEV: fetch pages politely and store redacted local snapshots (no findings)")
+    c.add_argument("--out", required=True, help="snapshot directory (git-ignored), e.g. snapshots/seven")
+    c.add_argument("--manual-csv", help="name,url CSV")
+    c.add_argument("--from-run", help="existing run dir whose candidates.json/companies.json supplies the companies")
+    c.add_argument("--names", help="comma list of company names to pick from --from-run (case-insensitive)")
+    c.add_argument("--domains", help="comma list of domains to pick from --from-run")
+    c.add_argument("--capture-pages", type=int, default=8, help="secondary pages stored per company (superset of the 4 fetched in a normal run)")
+    c.add_argument("--min-delay", type=float, default=2.0)
+    c.add_argument("--label", default="")
+
+    rv = sub.add_parser("replay", help="DEV: re-run the pipeline on captured snapshots with networking disabled")
+    rv.add_argument("--snapshots", required=True)
+    rv.add_argument("--icp", default=str(ROOT / "icp" / "frontend-studio.json"))
+    rv.add_argument("--out", default=str(ROOT / "runs"))
+    rv.add_argument("--collect-missing", action="store_true",
+                    help="do not abort on an uncaptured page: record every missing page, finish, then exit non-zero")
+    rv.add_argument("--max-age-days", type=float, default=30.0)
+    rv.add_argument("--allow-stale", action="store_true")
+    rv.add_argument("--max-secondary", type=int, default=4)
+
     rp = sub.add_parser("report", help="regenerate report.md for a run")
     rp.add_argument("--run", required=True)
     rp.add_argument("--labels")
@@ -55,6 +146,9 @@ def main(argv: list[str] | None = None) -> int:
     if a.cmd == "report":
         print(write_report(a.run, a.labels))
         return 0
+
+    if a.cmd in ("capture", "replay"):
+        return _dev_snapshot_cmd(a)
 
     ledger = SpendLedger()
     try:

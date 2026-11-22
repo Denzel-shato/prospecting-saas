@@ -95,6 +95,48 @@ class Selection:
         return asdict(self)
 
 
+_INDEX_LEAF_RE = re.compile(r"/(?:index|default|home)\.(?:html?|php|aspx?)$")
+
+
+def canonical_key(url: str) -> str:
+    """Identity of a page for de-duplication ONLY (never used as the fetch URL): scheme, 'www.', case,
+    trailing slashes, repeated slashes, index documents, query and fragment are ignored."""
+    sp = urlsplit(url)
+    host = (sp.hostname or "").lower()
+    if host.startswith("www."):
+        host = host[4:]
+    path = re.sub(r"/{2,}", "/", unquote(sp.path or "/")).lower()
+    path = _INDEX_LEAF_RE.sub("/", path).rstrip("/")
+    return f"{host}{path or '/'}"
+
+
+_ARTICLE_STARTERS = {"how", "why", "what", "when", "best", "top", "guide", "tips", "ways", "vs", "versus", "complete",
+                     "ultimate", "things", "reasons", "benefits", "checklist", "hire", "hiring", "cost", "costs",
+                     "choose", "choosing", "ultimate", "should", "is", "are", "can", "do", "does"}
+_AGENCY_WORDS = {"agency", "agencies", "company", "studio", "services", "consultancy", "consultants", "firm",
+                 "experts", "partner", "partners", "outsourcing", "shop"}
+_DEV_ONLY = {"development", "engineering"}
+_DEV_PEOPLE = _DEV_ONLY | {"developer", "developers", "programming"}
+_SLUG_STOP = {"the", "our", "and", "of", "for", "in", "to", "with", "a", "an", "us", "about", "team", "api", "sdk",
+              "docs", "guide", "tips", "portal", "login", "software"}
+
+
+def _dev_service_slug(tokens: list[str]) -> str | None:
+    """Generic 'what an agency page is called' recognition, no company or platform list:
+    '<anything>-development-agency', 'custom-web-application-development-company', 'react-native-development'.
+    Returns a reason or None. Headline slugs ('how-to-choose-...', numbers) never qualify."""
+    if not 2 <= len(tokens) <= 5:
+        return None
+    if tokens[0] in _ARTICLE_STARTERS or any(t.isdigit() for t in tokens):
+        return None
+    tset = set(tokens)
+    if tset & _DEV_PEOPLE and tset & _AGENCY_WORDS:
+        return "development/agency-service slug (development word + agency/service word)"
+    if tset & _DEV_ONLY and len(tokens) <= 4 and (tset - _DEV_ONLY - _SLUG_STOP):
+        return "development-service slug (<specialty>-development)"
+    return None
+
+
 def _norm_text(text: str) -> str:
     t = re.sub(r"[^a-z0-9& ]+", " ", (text or "").lower().replace("&", " and "))
     return re.sub(r"\s+", " ", t).strip()
@@ -147,6 +189,10 @@ def classify_link(href: str, text: str, home_host: str = "") -> tuple[str, str, 
             if len(segs) == 1:
                 return cat, f"path segment '{first}'", []
             return "detail", f"sub-page of '/{first}/' ({cat}); lower value", []
+    leaf_tokens = [t for t in segs[-1].split("-") if t]
+    why = _dev_service_slug(leaf_tokens) if len(segs) <= 2 else None
+    if why:
+        return "service_icp", f"{why}: '{segs[-1]}'", sorted(set(leaf_tokens) & (ICP_TOKENS | _DEV_PEOPLE | _AGENCY_WORDS))
     if _article_like(segs):
         return None  # headline-style slug with no recognised section: never matched by link text
     leaf = segs[-1]
@@ -165,24 +211,28 @@ def rank_candidates(links: list[tuple[str, str]], home_url: str) -> list[Selecti
     """All eligible same-site pages, best first (priority, ICP-hit count, page order)."""
     home_host = urlsplit(home_url).hostname or ""
     base = registrable_domain(home_host)
-    home_path = urlsplit(home_url).path.rstrip("/")
+    home_key = canonical_key(home_url)
     best: dict[str, tuple[Selection, int]] = {}
     for idx, (href, text) in enumerate(links):
         sp = urlsplit(href)
         if registrable_domain(sp.hostname or "") != base:
             continue
-        path = sp.path.rstrip("/")
-        if not path or path == home_path:
+        key = canonical_key(href)
+        if key == home_key or not sp.path.strip("/"):
             continue
         got = classify_link(href, text, home_host)
         if got is None:
             continue
         cat, reason, icp = got
+        # fetch URL = the first-seen actual form of the link; de-duplication identity = canonical_key
         norm = f"{sp.scheme}://{sp.netloc}{sp.path}"
         sel = Selection(url=norm, category=cat, priority=PRIORITY[cat], reason=reason, icp_terms=icp)
-        prev = best.get(norm)
-        if prev is None or sel.priority < prev[0].priority:
-            best[norm] = (sel, idx)
+        prev = best.get(key)
+        if prev is None:
+            best[key] = (sel, idx)
+        elif sel.priority < prev[0].priority:
+            sel.url = prev[0].url  # better classification, but keep the URL form first linked
+            best[key] = (sel, prev[1])
     rows = sorted(best.values(), key=lambda r: (r[0].priority, -len(r[0].icp_terms), r[1]))
     return [s for s, _ in rows]
 

@@ -17,3 +17,7 @@ coverage/
 vm1-data/
 reports/raw/
 *.log
+
+# Development snapshots of third-party pages (never commit)
+snapshots/
+pilot/snapshots/
