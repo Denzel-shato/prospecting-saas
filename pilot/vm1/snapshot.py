@@ -34,6 +34,7 @@ from . import USER_AGENT, __version__
 from .discovery import Adapter, Candidate
 from .fetch import NETWORK_ERRORS, FetchResult, PoliteFetcher, RawResponse, Transport, _decode, utc_now_iso
 from .netsafe import Target
+from .policy import IcpPolicy
 
 SCHEMA = 1
 KEEP_HEADERS = ("content-type", "location", "content-length", "content-language", "last-modified")
@@ -239,7 +240,7 @@ def check_fresh(store: SnapshotStore, max_age_days: float | None = DEFAULT_MAX_A
 
 # ---- capture -------------------------------------------------------------------------------------------------
 def capture(candidates: list[Candidate], fetcher: PoliteFetcher, store: SnapshotStore, *, capture_pages: int = 8,
-            label: str = "") -> dict:
+            label: str = "", policy: IcpPolicy | None = None) -> dict:
     """Fetch homepage + the top-ranked eligible secondary pages (a SUPERSET of what the normal 4-page budget
     fetches, so selection changes can be replayed) through the recording fetcher. Produces snapshots, no findings."""
     from .pageselect import canonical_key, plan_selection, rank_candidates
@@ -269,8 +270,9 @@ def capture(candidates: list[Candidate], fetcher: PoliteFetcher, store: Snapshot
         if res.ok:
             url = res.final_url or home_url
             page = parse_html(res.text or "", url)
-            ranked = rank_candidates(page.links, url)
-            planned = plan_selection(ranked, 4)
+            page_policy = policy.page_selection if policy is not None else None
+            ranked = rank_candidates(page.links, url, page_policy)
+            planned = plan_selection(ranked, 4, page_policy)
             order = [s.url for s in planned] + [s.url for s in ranked if s.url not in {p.url for p in planned}]
             seen = {canonical_key(url)}
             for u in order:
@@ -292,6 +294,9 @@ def capture(candidates: list[Candidate], fetcher: PoliteFetcher, store: Snapshot
         "retention": RETENTION_NOTE, "redaction": ["emails", "mailto/tel/sms links", "script bodies except JSON-LD",
                                                    "request headers and cookies never stored"],
         "kind": "development snapshot; not a finding",
+        "policy_id": policy.id if policy is not None else None,
+        "policy_version": policy.policy_version if policy is not None else None,
+        "policy_digest": policy.digest if policy is not None else None,
     }
     store.write_manifest(manifest)
     return manifest
