@@ -185,7 +185,11 @@ def render_report(run: dict, m: dict) -> str:
             L.append(f"  - query note: {s['note']}")
         if s.get("yield"):
             L.append("  - source yield (rejection reasons; counts of directory records, not qualified leads): "
-                     + ", ".join(f"{k}={v}" for k, v in s["yield"].items()))
+                     + ", ".join(f"{k}={v}" for k, v in s["yield"].items() if not isinstance(v, (list, dict))))
+            for i, q in enumerate(s["yield"].get("per_query") or [], start=1):
+                L.append(f"    - query {i} {q.get('query')}: records={q.get('records')}, new={q.get('new_candidates')}, "
+                         f"duplicate={q.get('duplicate_domain')}, rejected(geo/size/site)="
+                         f"{q.get('geography_rejected')}/{q.get('size_rejected')}/{q.get('no_website')}")
         if s.get("terms_note"):
             L.append(f"  - terms noted: {s['terms_note']} (verify before relying on it; license: {s.get('license') or 'n/a'})")
     if not man["discovery_status"]:

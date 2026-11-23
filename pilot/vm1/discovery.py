@@ -452,7 +452,8 @@ def build_adapters(names: list[str], *, client: ApiClient | None = None,
                    synthetic_world: str | None = None,
                    wikidata_limit: int = 500, worldwide: bool = False,
                    directory_seed_csv: str | None = None, directory_source: str | None = None,
-                   source_catalog: str | None = None) -> list[Adapter]:
+                   source_catalog: str | None = None,
+                   pickanagency_profile: str = "legacy") -> list[Adapter]:
     """Build adapters by name. Unknown/paid/keyed names fail closed."""
     adapters: list[Adapter] = []
     for raw in names:
@@ -476,7 +477,8 @@ def build_adapters(names: list[str], *, client: ApiClient | None = None,
             adapters.append(OverpassAdapter(client or ApiClient(), acknowledged=ack_overpass_terms))
         elif n == "pickanagency":
             from .pickanagency import PickAnAgencyAdapter
-            adapters.append(PickAnAgencyAdapter(client or ApiClient(), worldwide=worldwide))
+            adapters.append(PickAnAgencyAdapter(client or ApiClient(), worldwide=worldwide,
+                                                query_profile=pickanagency_profile))
         elif n == "manual_csv":
             if not manual_csv:
                 raise DiscoveryBlocked("manual_csv source needs --manual-csv PATH")

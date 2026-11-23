@@ -109,6 +109,9 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--sources", default="wikidata", help="comma list: pickanagency,wikidata,drupal_org,openstreetmap,manual_csv,directory_seed")
     r.add_argument("--ack-overpass-terms", action="store_true",
                    help="confirm you read the Overpass public-instance policy (needed for openstreetmap)")
+    r.add_argument("--pickanagency-profile", default="legacy", choices=["legacy", "complementary"],
+                   help="PickAnAgency query set (3 bounded requests either way). 'legacy' is the default; "
+                        "'complementary' is an UNMEASURED hypothesis, compare per-query yield before adopting")
     r.add_argument("--manual-csv", help="name,url CSV; labelled MANUAL, excluded from autonomous metrics")
     r.add_argument("--directory-seed-csv",
                    help="manually reviewed directory seed CSV (name,url[,directory_id,listing_url]); keeps directory "
@@ -233,7 +236,8 @@ def main(argv: list[str] | None = None) -> int:
             adapters = build_adapters(names, client=ApiClient(), ack_overpass_terms=a.ack_overpass_terms,
                                       manual_csv=a.manual_csv, worldwide=a.policy.geography.exclude_india,
                                       directory_seed_csv=a.directory_seed_csv, directory_source=a.directory_source,
-                                      source_catalog=a.source_catalog)
+                                      source_catalog=a.source_catalog,
+                                      pickanagency_profile=a.pickanagency_profile)
             fetcher = PoliteFetcher(min_delay=a.min_delay)
             cfg = RunConfig(icp=a.policy, out_dir=Path(a.out), mode="live",
                             max_candidates=a.max_candidates, max_research=a.max_research, seed=a.seed)
