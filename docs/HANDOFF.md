@@ -1,5 +1,16 @@
 # Project handoff — 2026-11-21
 
+## Engine #6 V2 — evidence preparation (2026-11-24, offline only)
+Branch `vm1-engine6-v2-evidence-prep`, based on `vm1-engine6-v2-ai-provider-foundation` @ b1deaa9. Scope was ONLY evidence prep: new package `pilot/vm1/e6v2/` (`evidence_prep.py`) plus `pilot/tests/test_e6v2_evidence_prep.py`. No existing code or test file was modified (only this note); deterministic Engine #6 is untouched and nothing imports the new package. No AI extraction, verification, budget, queue or API code; stdlib only.
+
+**What exists.** `prepare_evidence(snapshots, PrepConfig)` turns `PageSnapshot`/`PageData` into `EvidencePassage` records: exact block text (blocks joined by newline), source URL, `fetched_at`, page kind, heading chain, block indices, parser context labels, `risk_flags` and selection `reasons`. Passage ids are `ps_` + hash of (canonical URL, whitespace-normalised text), so they do not depend on order or block position. Emails, obfuscated emails, mailto/tel strings and phone numbers become `[email removed]` / `[phone removed]`; nav, link-label boilerplate, contact-only blocks and legal/careers/pricing/docs pages are dropped. Testimonial, client, editorial, footer and quote-adjacent text is KEPT and flagged (`ctx:quote`, `section:third_party`, `adjacent_quote`, `page:editorial`, `context_unknown` for hand-built pages), and a passage never spans a third-party boundary. Duplicates are merged (`also_seen_at`). Limits are configurable: per passage (long blocks are split, nothing truncated), per page, overall count, overall chars; drops are counted in `stats`.
+
+**Tested.** `cd pilot && python3 -m unittest discover -s tests -t .` -> 608 pass (568 baseline + 40 new, synthetic pages only). Eight deliberate regressions (no email redaction, no third-party flag, no dedupe, no per-page limit, index-based ids, nav kept, merging across third-party, no excluded kinds) were each caught.
+
+**Limits / not verified.** Never run on real captured pages, so no quality claim. JSON-LD is not read. Heading casing is restored only when the heading is itself a block. Selection is lexical (role words, team/About sections), so it over-selects. Team cards stay separate only where the HTML has card boundaries; flat `<p>` runs may share a passage (size-capped, labelled).
+
+**Next (not started, needs go-ahead):** AI extraction over these passages, verification, budgets/queues, wiring into Engine #6 V2.
+
 ## Engine #6 V2 — AI provider foundation (2026-11-23, offline only)
 Branch `vm1-engine6-v2-ai-provider-foundation`, based on `vm1-engine6-holdout20-structural-review` @ 033571c. Scope was ONLY the provider layer: new package `pilot/vm1/ai/` plus four `pilot/tests/test_ai_*.py` files. **No existing code or test file was modified** (only this handoff note); the deterministic Engine #6 and every existing module are untouched, and nothing imports the new package yet. No extraction, verification, queue or budget code. No real API call was made and no key exists or is needed.
 
