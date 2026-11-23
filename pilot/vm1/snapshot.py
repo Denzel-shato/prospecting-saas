@@ -29,6 +29,7 @@ import ssl
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from . import USER_AGENT, __version__
 from .discovery import Adapter, Candidate
@@ -162,11 +163,20 @@ class ReplayTransport:
         return RawResponse(entry["status"], dict(entry["headers"]), stored, bool(entry.get("truncated")))
 
 
-def replay_resolver_for(unresolvable: set[str]):
-    """No DNS in replay. SSRF URL validation still runs; a fixed public address satisfies the IP check, except for
-    hosts that failed to resolve at capture time (recorded in the manifest), which fail the same way again."""
+def replay_resolver_for(unresolvable: set[str], recorded_hosts: set[str] | None = None):
+    """No DNS in replay. A later transient DNS miss must not invalidate earlier recorded HTTP responses.
+
+    The capture manifest has host-wide DNS failures but no request-scoped record of those failures.
+    A host with an actual HTTP response is treated as resolvable so that saved responses can replay.
+    Uncaptured URLs still fail explicitly via SnapshotMissing (or snapshot_missing), never from the network.
+    Hosts without a recorded HTTP response retain their captured DNS failure.
+    """
+    recorded = recorded_hosts or set()
+
     def resolve(host: str) -> list[str]:
-        return [] if host.lower() in unresolvable else ["1.1.1.1"]
+        host = host.lower()
+        return [] if host in unresolvable and host not in recorded else ["1.1.1.1"]
+
     return resolve
 
 
@@ -190,7 +200,17 @@ class ReplayFetcher(PoliteFetcher):
         except FileNotFoundError:
             unresolvable = set()
             self.capture_started_at = ""
-        super().__init__(self.replay, replay_resolver_for(unresolvable), min_delay=0.0, sleep=lambda s: None)
+        # A host may have resolved for one request and failed DNS for another. The
+        # manifest's host-wide failure list is therefore not authoritative when
+        # we have a captured HTTP response from the same host.
+        recorded_hosts = set()
+        for entry in store.entries():
+            if isinstance(entry.get("status"), int):
+                host = urlsplit(entry.get("url", "")).hostname
+                if host:
+                    recorded_hosts.add(host.lower())
+        super().__init__(self.replay, replay_resolver_for(unresolvable, recorded_hosts),
+                         min_delay=0.0, sleep=lambda s: None)
 
     @property
     def missing(self) -> list[str]:
