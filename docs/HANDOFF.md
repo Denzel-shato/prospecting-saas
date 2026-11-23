@@ -194,3 +194,19 @@ as autonomous; the second source's attribution is in the reject log, not the com
 **Next:** hand-collect a small labelled batch (e.g. 10 agencies per directory in catalog priority order), run `seed-directory` then `run`, and
 compare yield per directory; ask Vercel/Netlify for permission or an API only if the user wants automation.
 
+
+## Engine #2 — candidate prequalification, selection and research backfill (2026-11-23, offline only)
+Branch `vm1-pilot-issue5-icp-foundation`. No live crawling, no paid APIs, no outreach; scoring and tier standards unchanged.
+
+**Root causes (code audit; the live run's per-company attribution was not re-crawled).**
+1. `select_with_reasons` cut the pool to `max_candidates` *before* research, so every inaccessible (HTTP 403, timeout, TLS, unsafe redirect), robots-refused or evidence-excluded attempt permanently consumed a slot. Nothing replaced it.
+2. Ties in the integer prequalify priority (e.g. every PickAnAgency "Software Development" record gets the same +3) were broken only by a seeded hash, while the adapter's tagline and service labels were never compared with the ICP's vocabulary.
+3. The unresearched remainder of the pool was not recorded anywhere except as a count.
+
+**Changes.** `prequalify.rank_pool` adds a graded, ICP-relative tie-break (distinct policy terms matched in description / tagline / service labels; missing text is neutral); `prequalify()` scores are untouched (frozen differential tests still pass); the hash only separates candidates no signal distinguishes. `pipeline.research_with_backfill` researches the ranked pool until `max_candidates` companies are *assessed* (any tier, including weak) or `max_research` attempts are spent (default `max_candidates` + 50%, `--max-research`). Each company carries `research_selection` (attempt, wave, pool_rank, outcome, `backfill_for`); the manifest has `research_plan`; `skipped.json` lists unresearched pool members with rank and reason; `counts.selected` now means researched. Replay never backfills. Fetch protections (SSRF, robots, TLS, rate limits) are untouched.
+
+**Deliberate non-changes.** Directory-seed occurrences and cross-source corroboration do not rank (existing "directory listing never ranks" rule). Listing on an exchange and record headcount are not used to gate backfill: scoring does not treat listing as an exclusion and the record can be stale; they only affect order via the existing priority.
+
+**Tests.** `tests/test_engine2_ordering.py`, `test_engine2_backfill.py`, `test_engine2_compat.py` (all 4 ICPs x 7 adapters; 64 outcome patterns). Mutation-checked: disabling backfill or counting weak as failure fails the suite.
+
+**Smallest live validation.** One run, no new crawl scope: `python3 -m vm1 run --icp icp/frontend-studio-worldwide.json --sources pickanagency,drupal_org,wikidata --max-candidates 10 --max-research 15`; read `research_plan` in the manifest and `skipped.json`. Compare assessed count to the earlier 10-researched run (4 possible / 4 weak / 2 inaccessible).
