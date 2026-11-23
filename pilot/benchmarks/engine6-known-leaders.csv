@@ -1,0 +1,13 @@
+company,domain,url,expected_name,expected_role
+Planet Argon,planetargon.com,https://www.planetargon.com/about,Robby Russell,"CEO, Partner"
+LaunchPad Lab,launchpadlab.com,https://launchpadlab.com/about/,Scott Weisman,Co-Founder and CEO
+Viget,viget.com,https://www.viget.com/about,Brian Williams,Co-Founder and CEO
+Very Good Ventures,verygood.ventures,https://verygood.ventures/about-us/,David DeRemer,Co-Founder and CEO
+Hashrocket,hashrocket.com,https://hashrocket.com/team,Marian Phelan,CEO
+Happy Cog,happycog.com,https://www.happycog.com/about,Lee Goldberg,Co-Founder and President
+thoughtbot,thoughtbot.com,https://thoughtbot.com/team,Chad Pytel,CEO
+Designli,designli.co,https://designli.co/why-designli,Keith Shields,Co-Founder and CEO
+MindSea,mindsea.com,https://mindsea.com/our-team/,Reuben Hall,CEO
+Cleveroad,cleveroad.com,https://www.cleveroad.com/company/,Yevgen Altynpara,Founder and CEO
+MojoTech,mojotech.com,https://www.mojotech.com/who-we-are/,Jason Grimm,CEO
+Sidebench,sidebench.com,https://sidebench.com/about/,Kevin Yamazaki,CEO
