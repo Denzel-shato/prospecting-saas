@@ -25,13 +25,16 @@ from .evidence import SOURCE_SUPPORTED, PageSnapshot, name_forms
 from .htmlparse import norm_ws
 
 _ROLE = (
-    r"(?:co-?founder|founding partner|co-?owner|founder|chief executive officer|chief executive|ceo|chief technology officer|cto|"
+    r"(?:co(?:-|\\s)?founder|founding partner|co(?:-|\\s)?owner|founder|chief executive officer|chief executive|ceo|chief technology officer|cto|"
     r"chief operating officer|coo|managing director|managing partner|president|owner|principal|"
     r"head of (?:engineering|delivery|product|technology)|"
     r"(?:vp|vice president)(?: of)? engineering|"
     r"director of (?:engineering|delivery|technology)|engineering director|delivery director)"
 )
-_TITLE = (rf"(?i:{_ROLE}(?:\s*(?:&|and|/|,)\s*{_ROLE})*(?:\s*(?:&|and|/|,)\s*partner)?"
+# Some studio cards put a technical role before the leadership role: "Developer and CEO".
+# Keep prefixes constrained to job titles; a standalone "Developer" is not an executive.
+_EXEC_PREFIX = r"(?:developer|engineer|designer|software developer|software engineer|product designer|lead developer)"
+_TITLE = (rf"(?i:(?:{_EXEC_PREFIX}\s+(?:and|&)\s+)?{_ROLE}(?:\s*(?:&|and|/|,)\s*{_ROLE})*(?:\s*(?:&|and|/|,)\s*partner)?"
           r"(?:\s*(?:&|and|/|\+)\s*(?:[A-Za-z]+ ){0,2}[A-Za-z]+)?)")  # title case-insensitive, names are not
 _ORG_TAIL = r"(?:\s+(?i:at|of|@)\s+(?P<org>[\w&.'’ -]{2,50}))?"
 TITLE_ONLY_RE = re.compile(rf"^(?P<title>{_TITLE}){_ORG_TAIL}$")
