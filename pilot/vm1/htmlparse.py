@@ -285,10 +285,34 @@ class _PeopleExtractor(_Extractor):
                 labels.add('person_title_field')
         return frozenset(labels)
 
+    def _is_team_roster_article(self, attrs):
+        # Only accept a bare article as an employee card when nested in an
+        # explicit team-list structure. Blogs, testimonials, client/partner
+        # articles and generic editorial articles retain their veto.
+        a = {k: v or "" for k, v in attrs}
+        if _Extractor._labels('div', a) & {'quote', 'client', 'editorial'}:
+            return False
+        if any(lab & {'quote', 'client', 'editorial', 'nav', 'footer', 'aside'}
+               for _, lab in self.stack):
+            return False
+        tags = [node for node, _ in self.stack]
+        if 'ul' not in tags or 'li' not in tags or not self.headings:
+            return False
+        latest = self.headings[max(self.headings)]
+        return bool(re.fullmatch(r"(?:our |the |meet (?:our |the )?)?team",
+                                 norm_ws(latest), re.I))
+
     def handle_starttag(self, tag, attrs):
+        team_roster = tag == 'article' and self._is_team_roster_article(attrs)
         if tag == 'span':
             self._flush()
         super().handle_starttag(tag, attrs)
+        if team_roster and self.stack and self.stack[-1][0] == 'article':
+            # The parser derives this label; source HTML cannot set it.
+            labels = set(self.stack[-1][1])
+            labels.discard('editorial')  # default label on bare articles
+            labels.add('team_roster_article')
+            self.stack[-1] = ('article', frozenset(labels))
 
     def handle_endtag(self, tag):
         if tag == 'span':
@@ -301,10 +325,11 @@ class _PeopleExtractor(_Extractor):
             for i in range(len(self.stack) - 1, -1, -1):
                 stack_tag, labels = self.stack[i]
                 if stack_tag == 'div':
+                    ancestors = self.stack[:i]
                     field_inside_card = (
-                        bool(labels & {'person_name_field', 'person_title_field'})
-                        and any('person_card' in ancestor_labels
-                                for _, ancestor_labels in self.stack[:i])
+                        any('team_roster_article' in lab for _, lab in ancestors)
+                        or (bool(labels & {'person_name_field', 'person_title_field'})
+                            and any('person_card' in lab for _, lab in ancestors))
                     )
                     break
         super().handle_endtag(tag)
