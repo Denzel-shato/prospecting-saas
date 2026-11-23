@@ -41,6 +41,24 @@ class FoundPatterns(unittest.TestCase):
         for title in ("Chief Executive", "Founding Partner", "Co-Owner"):
             self.assertEqual(dms(f"<h2>Team</h2><p>Jane Doe, {title}</p>")[0].role_class, "founder_ceo", title)
 
+    def test_spaced_co_founder_title_on_about_leadership_page(self):
+        html = ('<section><h2>Meet Our Leadership Team</h2>'
+                '<div><span>Scott Weisman</span><span>Co Founder &amp; CEO</span></div>'
+                '<div><span>Ryan Francis</span><span>Head of Sales</span></div></section>')
+        found = dms(html, url=ABOUT)
+        self.assertEqual([(p.name, p.role_class) for p in found],
+                         [("Scott Weisman", "founder_ceo")])
+        self.assertIn("Co Founder", found[0].title)
+
+    def test_developer_and_ceo_title_when_fields_are_adjacent(self):
+        html = '<section><h2>Our Team</h2><div><span>Chad Pytel</span><span>Developer and CEO</span></div></section>'
+        found = dms(html)
+        self.assertEqual([(p.name, p.role_class) for p in found],
+                         [("Chad Pytel", "founder_ceo")])
+
+    def test_technical_role_alone_does_not_become_decision_maker(self):
+        self.assertEqual(dms('<h2>Team</h2><p>Jane Doe</p><p>Developer</p>'), [])
+
     def test_jsonld_founder_of_matching_organisation(self):
         ld = {"@type": "Organization", "name": "Acme Studio",
               "founder": {"@type": "Person", "name": "José García", "jobTitle": "Founder"}}
