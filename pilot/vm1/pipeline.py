@@ -22,7 +22,7 @@ from .evidence import (PageSnapshot, apply_discovery_record, extract_evidence, v
 from .fetch import PoliteFetcher
 from .guard import SpendLedger, credentials_present
 from .pageselect import canonical_key, plan_selection, project_path, rank_candidates
-from .prequalify import coverage, order_pool
+from .prequalify import Ranked, coverage, rank_pool
 from .htmlparse import PageData, parse_html
 from .people import find_decision_makers
 from .score import EXCLUDED, NOT_RESEARCHABLE, score_company
@@ -87,15 +87,33 @@ def dedup(candidates: list[Candidate]) -> tuple[list[Candidate], list[dict], lis
     return list(kept.values()), rejected, possible_same
 
 
+def _selection_info(rows: list[Ranked]) -> dict:
+    info = {}
+    for r in rows:
+        tie = r.tie_break()
+        if r.priority or r.reasons or tie:
+            entry = {"priority": r.priority, "reasons": r.reasons}
+            if tie:
+                entry["tie_break"] = tie
+            info[r.candidate.domain] = entry
+    return info
+
+
+def prioritize_pool(pool: list[Candidate], seed: str,
+                    policy: IcpPolicy | None = None) -> tuple[list[Ranked], dict]:
+    """The WHOLE pool, best research candidate first, plus per-domain explanations. Order: record-based
+    prequalification priority, ICP-term breadth in the record's text, then seeded hash. With no usable
+    record fields every key ties and the order is the original seeded-hash order."""
+    rows = rank_pool(pool, seed, policy)
+    return rows, _selection_info(rows)
+
+
 def select_with_reasons(pool: list[Candidate], max_candidates: int, seed: str,
                         policy: IcpPolicy | None = None) -> tuple[list[Candidate], dict]:
-    """Deterministic selection. Candidates are ordered by (record-based prequalification priority,
-    seeded hash). With no usable record fields every priority is 0 and the order is the original
-    seeded-hash order. Nothing is dropped for being low priority unless the cap is reached."""
-    rows = order_pool(pool, seed, policy)
+    """The first `max_candidates` of prioritize_pool (everything when the pool fits the cap)."""
+    rows, _ = prioritize_pool(pool, seed, policy)
     chosen = rows if len(pool) <= max_candidates else rows[:max_candidates]
-    info = {c.domain: {"priority": pri, "reasons": why} for c, pri, why in chosen if pri or why}
-    return [c for c, _, _ in chosen], info
+    return [r.candidate for r in chosen], _selection_info(chosen)
 
 
 def select(pool: list[Candidate], max_candidates: int, seed: str) -> list[Candidate]:
@@ -308,7 +326,8 @@ def run_pipeline(cfg: RunConfig, adapters: list[Adapter], fetcher: PoliteFetcher
         "http_requests_logged": len(fetcher.log), "paid_api_spend_usd": ledger.total_usd,
         "spend_ledger_entries": len(ledger.entries),
         "credentials_detected_in_env_but_ignored": credentials_present(),
-        "selection_method": "prequalify priority (record description/listing/headcount) then seeded hash",
+        "selection_method": ("prequalify priority (record description/listing/headcount), then ICP-term breadth "
+                             "in record text, then seeded hash"),
         "selection_priorities": selection_info,
         "discovery_coverage": coverage(pool, policy),
         "possible_same_company_different_domain": possible_same,

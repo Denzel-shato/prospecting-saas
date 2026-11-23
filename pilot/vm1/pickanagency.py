@@ -140,6 +140,9 @@ class PickAnAgencyAdapter(Adapter):
                            "directory_software_focus_hint": software_focus,
                            "directory_marketing_focus_hint": marketing_focus,
                            "directory_tagline": tagline[:200],
+                           # Provider category labels, kept so vm1.prequalify can compare them with the ICP's
+                           # own vocabulary when ordering. Ordering hints only, never qualification evidence.
+                           "directory_services": [s.strip()[:60] for s in services if s.strip()][:10],
                            "country": country,
                            "directory_name": self.SOURCE_NAME,
                            "directory_discovery_query": dict(query)})
