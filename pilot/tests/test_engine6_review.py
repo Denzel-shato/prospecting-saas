@@ -78,6 +78,70 @@ class Engine6Review(unittest.TestCase):
         self.assertEqual(people(body.replace('<article ', '<article itemprop="author" ')), [])
         self.assertEqual(people('<article><h3>Jane Doe</h3><p>CEO</p></article>'), [])
 
+    def test_team_list_article_with_nested_fields_recovers_executive(self):
+        # Reconstructed from Happy Cog's captured About page structure.
+        html = (
+            '<h2>Team</h2><ul><li><article class="grid gap-5 group">'
+            '<div><p>Lee Goldberg</p></div>'
+            '<div><p>Co-Founder and President, Marketing &amp; Strategy</p></div>'
+            '</article></li></ul>'
+        )
+        found = people(html)
+        self.assertEqual([(p.name, p.title) for p in found],
+                         [('Lee Goldberg', 'Co-Founder and President, Marketing & Strategy')])
+        self.assertTrue(verify_excerpt_parts(found[0].excerpt_parts,
+                                              snap(html, 'https://acme.example/team').page))
+
+    def test_generic_article_without_team_list_stays_rejected(self):
+        self.assertEqual(people('<h2>Team</h2><article>'
+                                '<div>Jane Doe</div><div>CEO</div></article>'), [])
+        self.assertEqual(people('<h2>Company</h2><ul><li><article>'
+                                '<div>Jane Doe</div><div>CEO</div></article></li></ul>'), [])
+
+    def test_team_list_article_editorial_and_testimonial_are_still_rejected(self):
+        for kind in ('blog', 'testimonial', 'client', 'author'):
+            html = ('<h2>Team</h2><ul><li><article class="' + kind + '">'
+                    '<div><p>Jane Doe</p></div><div><p>CEO</p></div>'
+                    '</article></li></ul>')
+            self.assertEqual(people(html), [], kind)
+
+    def test_team_list_articles_keep_separate_person_boundaries(self):
+        html = (
+            '<h2>Team</h2><ul>'
+            '<li><article><div><p>Jane Doe</p></div></article></li>'
+            '<li><article><div><p>CEO</p></div></article></li>'
+            '</ul>'
+        )
+        self.assertEqual(people(html), [])
+
+    def test_team_list_article_in_client_subsection_stays_rejected(self):
+        html = (
+            '<h2>Team</h2><h3>Our Clients</h3>'
+            '<ul><li><article><div><p>Jane Doe</p></div>'
+            '<div><p>CEO</p></div></article></li></ul>'
+        )
+        self.assertEqual(people(html), [])
+
+    def test_wordpress_structural_classes_do_not_veto_own_team_bio(self):
+        # MindSea's captured body and content wrapper used these two WP classes.
+        html = (
+            '<body class="wp-singular page-template-default wp-custom-logo wp-theme-mindsea">'
+            '<div class="entry-content wp-block-post-content is-layout-flow">'
+            '<h2>Meet the Team</h2><h3>Leadership</h3>'
+            '<h4>Reuben Hall</h4>'
+            '<p>Chief Executive Officer • Halifax, NS</p>'
+            '<p>Reuben Hall is the CEO of Acme Studio, a digital product agency.</p>'
+            '</div></body>'
+        )
+        self.assertEqual([(p.name, p.title) for p in people(html)],
+                         [('Reuben Hall', 'CEO')])
+
+    def test_actual_testimonial_and_post_author_classes_still_veto(self):
+        for kind in ('client-logo', 'post-author', 'testimonial'):
+            html = ('<h2>Team</h2><div class="' + kind + '">'
+                    '<p>Jane Doe is the CEO of Acme Studio.</p></div>')
+            self.assertEqual(people(html), [], kind)
+
     def test_graph_affiliation_and_reference_cycles(self):
         graph = {'@graph': [
             {'@id': '#org', '@type': 'Organization', 'name': 'Acme Studio', 'employee': {'@id':'#person'}},
