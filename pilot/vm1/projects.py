@@ -46,7 +46,7 @@ _WEB_SERVICE = re.compile(r"\b(?:web (?:development|application development)|fro
 # the client relationship, commissioned creation and an application artifact.
 _PARTNERED_APP = re.compile(
     r"\b(?:we|our team) (?:partnered|collaborated|worked) with "
-    r"(?P<client>[A-Z][\w’'-]*(?: [A-Z][\w’'-]*){0,3})"
+    r"(?P<client>(?-i:[A-Z])[\w’'-]*(?: (?-i:[A-Z])[\w’'-]*){0,3})"
     r"(?:, [^.!?]{0,90})? to (?:create|build|develop|deliver|launch)\b", re.I)
 
 # Some genuine delivered client systems are described without a public client
@@ -148,12 +148,13 @@ def project_excerpts(page: PageData, kind: str, names: list[str]) -> list[str]:
             if partner:
                 app = _APPLICATION.search(sentence, partner.end())
                 if (app and app.end() - partner.start() <= 185
+                        and not _AUDIENCE.search(partner.group("client"))
                         and not _OTHER_ACTOR.search(sentence[partner.end():app.start()])):
                     return [_excerpt(sentence, partner.start(), app.end())]
     for i, sentence in passages:
         for action in delivered.finditer(sentence):
             app = _APPLICATION.search(sentence, action.end())
-            if not app or app.end() - action.start() > 165 or _OTHER_ACTOR.search(sentence[action.end():app.start()]):
+            if not app or app.end() - action.start() > 195 or _OTHER_ACTOR.search(sentence[action.end():app.start()]):
                 continue
             proof = _excerpt(sentence, action.start(), app.end())
             named = _NAMED_CLIENT.search(sentence, app.end())
