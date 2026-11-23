@@ -52,7 +52,7 @@ def world(spec):
     hosts = dict(spec)
     transport = FakeTransport({"hosts": hosts}, PAGES)
     fetcher = PoliteFetcher(transport, lambda h: ["1.1.1.1"] if h in hosts else [], min_delay=0.0,
-                            sleep=lambda s: None)
+                            sleep=lambda s: None, now=lambda: "2026-11-23T00:00:00+00:00")
     return fetcher, transport
 
 
