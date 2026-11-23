@@ -20,6 +20,55 @@ class Engine6Review(unittest.TestCase):
     def test_inline_card_fields(self):
         self.assertEqual(people('<div><span>Jane Doe</span><span>CEO</span></div>')[0].name, 'Jane Doe')
 
+    def test_realistic_nested_person_card_keeps_name_and_title_together(self):
+        # Reconstructed from a live first-party team page. The photo field,
+        # separate name/title divs and social links must not hide a known CEO.
+        html = (
+            '<div class="basic-grid__4-col person">'
+            '<div class="person-photo-frame"><img alt="Chad Pytel" src="/image.png"></div>'
+            '<div class="person-info-name">Chad Pytel</div>'
+            '<div class="person-info-title">Developer and CEO</div>'
+            '<div class="social-links"><a href="/social">GitHub</a></div>'
+            '</div>'
+        )
+        found = people(html)
+        self.assertEqual([(p.name, p.title, p.basis) for p in found],
+                         [('Chad Pytel', 'Developer and CEO', 'team_page')])
+        self.assertTrue(all(verify_excerpt_parts(p.excerpt_parts, snap(html, 'https://acme.example/team').page)
+                            for p in found))
+
+    def test_semantic_fields_in_separate_person_cards_are_not_paired(self):
+        html = (
+            '<div class="person"><div class="person-info-name">Jane Doe</div></div>'
+            '<div class="person"><div class="person-info-title">CEO</div></div>'
+        )
+        self.assertEqual(people(html), [])
+
+    def test_semantic_fields_without_person_card_are_not_paired(self):
+        html = (
+            '<div class="person-info-name">Jane Doe</div>'
+            '<div class="person-info-title">CEO</div>'
+        )
+        self.assertEqual(people(html), [])
+
+    def test_semantic_person_card_in_testimonial_is_rejected(self):
+        html = (
+            '<div class="testimonial"><div class="person">'
+            '<div class="person-info-name">Jane Doe</div>'
+            '<div class="person-info-title">CEO</div>'
+            '</div></div>'
+        )
+        self.assertEqual(people(html), [])
+
+    def test_semantic_person_card_in_editorial_is_rejected(self):
+        html = (
+            '<div class="blog"><div class="person">'
+            '<div class="person-info-name">Jane Doe</div>'
+            '<div class="person-info-title">CEO</div>'
+            '</div></div>'
+        )
+        self.assertEqual(people(html), [])
+
     def test_person_article_and_editorial_veto(self):
         body = '<article itemtype="https://schema.org/Person"><h3>Jane Doe</h3><p>CEO</p></article>'
         self.assertEqual(people(body)[0].name, 'Jane Doe')
