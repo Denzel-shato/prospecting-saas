@@ -262,6 +262,16 @@ class _PeopleExtractor(_Extractor):
         labels = set(_Extractor._labels(tag, attrs))
         if tag == 'article' and attrs.get('itemtype', '').rstrip('/').endswith('/Person'):
             labels = set(_Extractor._labels('div', attrs))
+        if tag == 'div':
+            classes = set(attrs.get('class', '').lower().split())
+            # Conservative structural hints, not identity evidence. Only suppress
+            # a field-level boundary when BOTH fields belong to a person card.
+            if classes & {'person', 'person-card', 'team-member', 'team-member-card'}:
+                labels.add('person_card')
+            if 'person-info-name' in classes:
+                labels.add('person_name_field')
+            if 'person-info-title' in classes:
+                labels.add('person_title_field')
         return frozenset(labels)
 
     def handle_starttag(self, tag, attrs):
@@ -272,9 +282,25 @@ class _PeopleExtractor(_Extractor):
     def handle_endtag(self, tag):
         if tag == 'span':
             self._flush()
+        # Nested divs separating a name and a title must not always act as
+        # whole-card separators. A semantic person-card parent explicitly
+        # bounds that pair; its own closing div still inserts a separator.
+        field_inside_card = False
+        if tag == 'div':
+            for i in range(len(self.stack) - 1, -1, -1):
+                stack_tag, labels = self.stack[i]
+                if stack_tag == 'div':
+                    field_inside_card = (
+                        bool(labels & {'person_name_field', 'person_title_field'})
+                        and any('person_card' in ancestor_labels
+                                for _, ancestor_labels in self.stack[:i])
+                    )
+                    break
         super().handle_endtag(tag)
-        if tag in {'div', 'article', 'li'} and len(self.blocks) < MAX_BLOCKS:
-            # Do not pair a dangling name in one card with a title in the next.
+        if (tag in {'div', 'article', 'li'} and not field_inside_card
+                and len(self.blocks) < MAX_BLOCKS):
+            # Preserve card boundaries: never pair a name from one card
+            # with a title from a neighbouring card.
             self.blocks.append('')
             self.block_ctx.append(frozenset())
             self.block_section.append('')
