@@ -303,3 +303,10 @@ documented US `country` filter, audit-only team-size/industry metadata, opt-in `
 scoring, backfill, evidence and decision-maker code untouched (one compat-test invariant narrowed, see audit doc).
 Not proven: any real-world yield improvement. Real 37-company pool was not available; import it with `discovery-benchmark --pool`.
 Next: run the 6-request live A/B in the audit doc, human-label the unique companies, compare relevant studios per request.
+
+
+## Engine 6 V2 deterministic verification — 2026-11-24 (branch `vm1-engine6-v2-verification`, base 09224e1)
+Done (offline, $0, no AI calls): `pilot/vm1/e6v2_verify/` verifies AI-extracted decision makers against `EvidencePassage` records. Per claim returns accepted / rejected / manual_review plus a reason. Rejects unknown passage ids, quotes not verbatim in the passage, names/roles not in the quote, invalid person names, company mismatch, role tied to another company, and third-party (testimonial/client/editorial) context. Unclear context (adjacent_quote, context_unknown, footer/aside), non-leadership roles and non-team/about/home pages go to manual_review. Reuses `people.valid_name`, `people.org_matches` and the prep module's risk flags.
+Placement: a sibling package, because the existing prep isolation tests forbid `vm1/e6v2` importing `people` and forbid top-level `vm1/*.py` mentioning `e6v2`. Existing extractor, providers and evidence-prep untouched.
+Tests: `pilot/tests/test_e6v2_verification.py` (23 synthetic); full suite 631 pass (was 608). Not run on real pages; "accepted" means supported by the quoted first-party text, not proven true. Nothing wired into the pipeline yet.
+Next: decide how verdicts feed the (not yet built) AI extraction step and manual-review queue.
