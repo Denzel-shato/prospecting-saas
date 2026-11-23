@@ -68,6 +68,24 @@ _MIXED_STUDIO_TEAM = re.compile(
 )
 
 
+def _own_company_overview(section: str, company_name: str | None) -> bool:
+    """A company-overview section on an otherwise unclassified first-party page.
+
+    Require BOTH a "Company Overview" heading and the exact target company
+    name in a different heading of the same chain. An isolated CEO label in
+    marketing, testimonial, portfolio, or contact content is not sufficient.
+    The caller still applies third-party context and section vetoes first.
+    """
+    if not company_name or len(company_name.strip()) < 4:
+        return False
+    headings = section.lower().split(" > ")
+    if not any(re.fullmatch(r"company overview", h.strip()) for h in headings):
+        return False
+    target = norm_ws(company_name).lower()
+    return any(re.search(r"(?<!\w)" + re.escape(target) + r"(?!\w)", h)
+               for h in headings if h.strip() != "company overview")
+
+
 def _third_party_people_section(section: str) -> bool:
     for heading in section.split(" > "):
         check = heading
@@ -253,6 +271,8 @@ def find_decision_makers(snaps: list[PageSnapshot], limit: int = 3, *, company_k
             return "team_section"
         if kind == "about":
             return "about_page"
+        if kind == "other" and _own_company_overview(page.section_at(i), company_name):
+            return "own_company_overview"
         return None
 
     for snap in snaps:
