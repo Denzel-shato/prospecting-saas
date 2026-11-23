@@ -1,5 +1,18 @@
 # Project handoff — 2026-11-21
 
+## Engine #6 V2 — AI provider foundation (2026-11-23, offline only)
+Branch `vm1-engine6-v2-ai-provider-foundation`, based on `vm1-engine6-holdout20-structural-review` @ 033571c. Scope was ONLY the provider layer: new package `pilot/vm1/ai/` plus four `pilot/tests/test_ai_*.py` files. **No existing code or test file was modified** (only this handoff note); the deterministic Engine #6 and every existing module are untouched, and nothing imports the new package yet. No extraction, verification, queue or budget code. No real API call was made and no key exists or is needed.
+
+**What exists.** `StructuredRequest` (prompt, JSON-schema subset, limits, timeout) -> `AIProvider.generate_structured()` -> schema-validated `StructuredResponse`. `MockProvider` (scripted dicts/raw text/exceptions/callables, records calls). `CloudflareWorkersAIProvider` and `GroqProvider` over a stdlib HTTPS transport (https only, no redirects, wall-clock deadline, response-size cap). Error taxonomy `AIConfigError / AITimeoutError / AITransportError / AIHTTPError / AIResponseError` with advisory `retryable` (no retry loop exists). `provider_from_env()` selects a provider only if `ENGINE6_AI_PROVIDER` is set explicitly (`mock|cloudflare|groq`); models have no defaults. Output is always re-validated locally because neither vendor guarantees schema conformance. API keys are never put in reprs or error text.
+
+**Tested.** `cd pilot && python3 -m unittest discover -s tests -t .` -> 568 pass (502 baseline + 66 new); all ICP policies validate; synthetic pipeline run unchanged. New tests cover timeouts, HTTP statuses, malformed/empty/non-object/truncated/schema-invalid output, secret redaction, config errors, import-time no-I/O, stdlib-only imports, and that no existing module imports `vm1.ai`. Network is hard-blocked inside the adapter tests. Five deliberate regressions (no redaction, no deadline, ignored truncation, no schema validation, no HTTP status check) were each caught by the suite.
+
+**NOT verified (be honest about this).** Request/response shapes were taken from Cloudflare's and Groq's public docs, never exercised against a live endpoint. Docs gaps: Cloudflare's REST page does not document `success`/`errors` envelope fields (handled defensively); Groq's pages do not list `finish_reason` values or the error body shape (`length` and `error.message` handled defensively). Groq `json_schema` mode is supported only on some models per its docs, so it is opt-in (`GROQ_RESPONSE_MODE`). Free-tier limits, terms and data-retention rights for either vendor are **unconfirmed**; CLAUDE.md rules still apply (no spend, no provider data persisted until rights are confirmed). Using either adapter for real needs the user's explicit approval and a key; the first live call should be one tiny, user-supervised request.
+
+**Existing guard note.** `tests/test_guard_discovery_pipeline.py` bans mail/paid-SDK imports only in top-level `vm1/*.py` (non-recursive glob), so it does not scan `vm1/ai/`. The new isolation tests apply an equivalent (stricter, stdlib-only) check to the subpackage; consider extending the old guard to recurse.
+
+**Next (not started, needs the user's go-ahead):** extraction, verification, queues, budgets, and wiring a provider into Engine #6 V2.
+
 ## Engine #6 recovery review — 2026-11-23
 
 Completion addendum: see `docs/VM1-ENGINE6-RECOVERY-AUDIT.md`. The subsequent
