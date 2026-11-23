@@ -55,6 +55,27 @@ PROSE_IAM_RE = re.compile(rf"\b(?:I(?:'|’)m|I am) (?P<name>{_NAME}),? (?:the |
 PROSE_FOUNDED_RE = re.compile(rf"(?:^|(?<=[.!?] ))(?P<org>[A-Z][\w&.'’ -]{{1,50}}?) (?:was |is )?(?:co-?)?founded by "
                               rf"(?P<name>{_NAME})(?=[.,;!]|\s+(?:in|and|with|after|back)\b|$)")
 
+# When a studio describes its own cross-functional team as including investors,
+# "investors" alone must not turn the whole staff roster into third-party content.
+# This exception applies ONLY within a single mixed engineering-team heading.
+# Dedicated Investors/Advisors headings, separate nested sections, client
+# testimonials and editorial classes continue to be vetoed.
+_MIXED_STUDIO_TEAM = re.compile(
+    r"\bour team of\b(?=[^>]*\b(?:strategists?|designers?|engineers?|developers?)\b)"
+    r"(?=[^>]*\binvestors?\b)", re.I,
+)
+
+
+def _third_party_people_section(section: str) -> bool:
+    for heading in section.split(" > "):
+        check = heading
+        if _MIXED_STUDIO_TEAM.search(heading):
+            check = re.sub(r"\binvestors?\b", "", heading, flags=re.I)
+        if THIRD_PARTY_SECTION_RE.search(check):
+            return True
+    return False
+
+
 NAME_STOPWORDS = {
     "our", "team", "about", "the", "and", "meet", "contact", "services", "company", "studio",
     "founder", "ceo", "cto", "head", "director", "leadership", "ownership", "level", "us", "we", "careers", "blog",
@@ -244,7 +265,7 @@ def find_decision_makers(snaps: list[PageSnapshot], limit: int = 3, *, company_k
         for i, block in enumerate(blocks):
             if len(block) > 300:
                 continue
-            if (page.ctx_at(i) & THIRD_PARTY_CTX) or THIRD_PARTY_SECTION_RE.search(page.section_at(i)):
+            if (page.ctx_at(i) & THIRD_PARTY_CTX) or _third_party_people_section(page.section_at(i)):
                 continue  # testimonial / client / partner / editorial structure
             if looks_like_quote_neighbour(page, i):
                 continue  # attribution line under a quotation
