@@ -25,7 +25,7 @@ from .evidence import SOURCE_SUPPORTED, PageSnapshot, name_forms
 from .htmlparse import norm_ws
 
 _ROLE = (
-    r"(?:co(?:-|\\s)?founder|founding partner|co(?:-|\\s)?owner|founder|chief executive officer|chief executive|ceo|chief technology officer|cto|"
+    r"(?:co(?:-|\s)?founder|founding partner|co(?:-|\s)?owner|founder|chief executive officer|chief executive|ceo|chief technology officer|cto|"
     r"chief operating officer|coo|managing director|managing partner|president|owner|principal|"
     r"head of (?:engineering|delivery|product|technology)|"
     r"(?:vp|vice president)(?: of)? engineering|"
