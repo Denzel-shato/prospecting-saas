@@ -78,6 +78,25 @@ class FoundPatterns(unittest.TestCase):
         self.assertEqual(dms('<h2>Our Team</h2><p>Jane Doe, Partner, CTO</p>')[0].role_class, "cto_eng")
         self.assertEqual(dms('<h2>Our Team</h2><p>Jane Doe</p><p>Partner</p>'), [])
 
+    def test_mixed_engineering_and_investor_team_heading_is_not_entirely_blocked(self):
+        html = (
+            '<h2>Our Team of tech strategists, designers, engineers, experts &amp; investors</h2>'
+            '<div class="team-member">'
+            '<p class="emp-name"><span class="first-name">Kevin Yamazaki</span></p>'
+            '<span class="job-title">Partner, CEO</span>'
+            '</div>'
+        )
+        self.assertEqual([(p.name, p.title) for p in dms(html, url=ABOUT)],
+                         [("Kevin Yamazaki", "Partner, CEO")])
+
+    def test_dedicated_investor_section_still_blocks_people(self):
+        self.assertEqual(dms('<h2>Our Investors</h2><p>Jane Doe, CEO</p>', url=ABOUT), [])
+        self.assertEqual(dms('<h2>Our Team of Investors</h2><p>Jane Doe, CEO</p>', url=ABOUT), [])
+        self.assertEqual(dms('<h2>Our Team of engineers &amp; investors</h2>'
+                             '<h3>Investors</h3><p>Jane Doe, CEO</p>', url=ABOUT), [])
+        self.assertEqual(dms('<h2>Our Team of engineers &amp; investors</h2>'
+                             '<h3>Our Clients</h3><p>Jane Doe, CEO</p>', url=ABOUT), [])
+
     def test_jsonld_founder_of_matching_organisation(self):
         ld = {"@type": "Organization", "name": "Acme Studio",
               "founder": {"@type": "Person", "name": "José García", "jobTitle": "Founder"}}
