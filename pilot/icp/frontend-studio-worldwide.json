@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "id": "frontend-studio-worldwide-v1",
-  "policy_version": "1.1.1",
+  "policy_version": "1.1.2",
   "name": "Frontend studio -> independent software/product studios worldwide, excluding India",
   "description": "Independent software development and product studios worldwide, excluding India-based firms, roughly 5–50 staff, with relevant frontend delivery work.",
   "seller": "Hypothetical freelance/boutique React/Next.js frontend development studio (dashboards, client portals, SaaS interfaces). Not a real business.",
@@ -258,6 +258,9 @@
       "consulting",
       "build*",
       "software house"
+    ],
+    "service_line_terms": [
+      "social media"
     ]
   },
   "page_selection": {

@@ -17,7 +17,7 @@ WORLD_PATH = ROOT / "icp" / "frontend-studio-worldwide.json"
 WORLD = load_policy(WORLD_PATH)
 RAW = json.loads(WORLD_PATH.read_text())
 LEGACY_RAW = copy.deepcopy(RAW)
-for _k in ("generic_terms", "ambiguous_negative_terms", "service_context_terms"):
+for _k in ("generic_terms", "ambiguous_negative_terms", "service_context_terms", "service_line_terms"):
     LEGACY_RAW["prequalify"].pop(_k)
 LEGACY_WORLD = load_policy(LEGACY_RAW)
 SEEDS = [f"s{i}" for i in range(10)]
@@ -116,6 +116,97 @@ class PriorityCannotOutweighStrongerEvidence(unittest.TestCase):
                 order = top([neg, unknown, generic], 3, seed)
                 self.assertLess(order.index("g.example"), order.index("n.example"))
                 self.assertLess(order.index("u.example"), order.index("n.example"))
+
+
+class MixedServiceStudios(unittest.TestCase):
+    """A marketing service LABEL beside software-development evidence is a mixed agency, not a marketing business."""
+
+    MIXED = ["Custom Software Development", "Social Media Marketing"]
+
+    def score(self, **attrs):
+        return structural_priority({**HINT, **attrs}, WORLD) + record_evidence({**HINT, **attrs}, WORLD).points
+
+    def test_marketing_label_does_not_cancel_software_evidence(self):
+        mixed = record_evidence({"directory_services": self.MIXED}, WORLD)
+        software_only = record_evidence({"directory_services": ["Custom Software Development"]}, WORLD)
+        self.assertEqual(mixed.points, software_only.points)
+        self.assertEqual(mixed.service_line_neutralised, ("social media",))
+        self.assertEqual(mixed.negative, ())
+
+    def test_mixed_service_listing_outranks_generic_only_and_marketing_only(self):
+        mixed = cand("mixed.example", directory_services=self.MIXED)
+        generic = cand("generic.example", directory_services=["Consulting", "Web Design", "Web Development", "Digital Agency"])
+        marketing = cand("marketing.example", directory_services=["Social Media Marketing", "SEO"])
+        for seed in SEEDS:
+            with self.subTest(seed=seed):
+                self.assertEqual(top([marketing, generic, mixed], 3, seed), ["mixed.example", "generic.example", "marketing.example"])
+
+    def test_extra_services_do_not_help_a_mixed_studio_either(self):
+        a = self.score(directory_services=["Custom Software Development", "Web Development"])
+        b = self.score(directory_services=["Custom Software Development", "Web Development", "Social Media Marketing"])
+        self.assertEqual(a, b, "neutral, not a bonus")
+
+    def test_marketing_only_labels_keep_the_penalty(self):
+        ev = record_evidence({"directory_services": ["Social Media Marketing", "SEO"]}, WORLD)
+        self.assertEqual(ev.points, -2)
+        self.assertEqual(ev.negative, ("social media",))
+
+    def test_marketing_label_beside_only_generic_web_labels_is_still_penalised(self):
+        ev = record_evidence({"directory_services": ["Web Development", "Web Design", "Social Media Marketing"]}, WORLD)
+        self.assertEqual(ev.negative, ("social media",))
+        self.assertEqual(ev.service_line_neutralised, ())
+
+    def test_misleading_tagline_stays_authoritative(self):
+        """First-party positioning outranks labels: a marketing tagline is penalised even when labels list software."""
+        misleading = record_evidence({"directory_tagline": "Social media growth agency",
+                                      "directory_services": self.MIXED}, WORLD)
+        self.assertEqual(misleading.negative, ("social media",))
+        self.assertEqual(misleading.service_line_neutralised, ())
+        honest = record_evidence({"directory_tagline": "Custom software and app development studio",
+                                  "directory_services": self.MIXED}, WORLD)
+        self.assertGreater(honest.points, misleading.points)
+        studio = cand("studio.example", directory_tagline="Custom software studio", directory_services=self.MIXED)
+        decoy = cand("decoy.example", directory_tagline="Social media growth agency", directory_services=self.MIXED)
+        for seed in SEEDS:
+            self.assertEqual(top([decoy, studio], 2, seed), ["studio.example", "decoy.example"])
+
+    def test_tagline_naming_both_is_neutral_only_with_explicit_software_specialization(self):
+        both = record_evidence({"directory_tagline": "Custom software development and social media marketing"}, WORLD)
+        self.assertEqual(both.negative, ())
+        self.assertEqual(both.service_line_neutralised, ("social media",))
+        marketing = record_evidence({"directory_tagline": "Social media marketing and web design"}, WORLD)
+        self.assertEqual(marketing.negative, ("social media",))
+
+    def test_saas_vendor_listing_with_marketing_label_is_not_rescued(self):
+        vendor = record_evidence({"directory_tagline": "The SaaS platform for project teams",
+                                  "directory_services": ["Social Media Marketing"]}, WORLD)
+        self.assertLess(vendor.points, 0)
+        mixed_vendor = record_evidence({"directory_tagline": "The SaaS platform for project teams",
+                                        "directory_services": self.MIXED}, WORLD)
+        self.assertEqual(mixed_vendor.ambiguous_penalised, ("saas",))
+        self.assertIn("platform", mixed_vendor.negative)
+
+    def test_missing_metadata_is_neutral(self):
+        self.assertEqual(record_evidence({}, WORLD).points, 0)
+        self.assertEqual(record_evidence({"directory_services": [], "directory_tagline": ""}, WORLD).points, 0)
+        self.assertEqual(record_evidence({"directory_services": None}, WORLD).points, 0)
+        unknown, marketing = cand("u.example"), cand("m.example", directory_services=["Social Media Marketing"])
+        self.assertEqual(top([marketing, unknown], 2, "s"), ["u.example", "m.example"])
+
+    def test_listed_or_oversized_mixed_agencies_still_lose_structural_points(self):
+        base = self.score(directory_services=self.MIXED)
+        self.assertEqual(self.score(directory_services=self.MIXED, listed_on_exchange=True), base - 4)
+        self.assertEqual(self.score(directory_services=self.MIXED, directory_marketing_focus_hint=True), base - 1)
+
+    def test_other_icps_do_not_use_service_line_terms(self):
+        for name in ("frontend-studio", "ecommerce-marketing-agency", "ai-automation-service-businesses"):
+            self.assertEqual(load_policy(ROOT / "icp" / f"{name}.json").prequalify.service_line_terms, (), name)
+
+    def test_service_line_terms_must_be_negative_terms(self):
+        raw = copy.deepcopy(RAW)
+        raw["prequalify"]["service_line_terms"] = ["not a listed term"]
+        with self.assertRaises(PolicyError):
+            load_policy(raw)
 
 
 class CompatibilityAndProvenance(unittest.TestCase):

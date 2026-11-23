@@ -157,10 +157,14 @@ class PrequalifyPolicy:
     generic_terms: tuple = ()  # subset of positive_terms: broad service labels any agency uses
     ambiguous_negative_terms: tuple = ()  # subset of negative_terms that can name WHAT a studio builds, not what it sells
     service_context_terms: tuple = ()  # words that show a services provider (e.g. "development"), used to read ambiguous terms
+    # subset of negative_terms that, as a directory CATEGORY LABEL, name an extra service line (e.g. "social media") rather than
+    # what the company is. Neutral beside specific target-service evidence; still penalised in first-party positioning
+    # without such evidence and when the labels are marketing-only.
+    service_line_terms: tuple = ()
 
     @property
     def uses_specificity(self) -> bool:
-        return bool(self.generic_terms or self.ambiguous_negative_terms)
+        return bool(self.generic_terms or self.ambiguous_negative_terms or self.service_line_terms)
 
 
 @dataclass(frozen=True)
@@ -508,15 +512,17 @@ def _parse(raw: dict, source_format: str) -> IcpPolicy:
         c.err("policy.strong_requirements.min_capabilities", "exceeds the number of capabilities with counts_for_strong")
 
     pq = c.obj(d.get("prequalify"), "policy.prequalify", ("positive_terms", "negative_terms"),
-               ("generic_terms", "ambiguous_negative_terms", "service_context_terms"))
+               ("generic_terms", "ambiguous_negative_terms", "service_context_terms", "service_line_terms"))
     pq_terms = {}
-    for k in ("positive_terms", "negative_terms", "generic_terms", "ambiguous_negative_terms", "service_context_terms"):
+    for k in ("positive_terms", "negative_terms", "generic_terms", "ambiguous_negative_terms", "service_context_terms",
+              "service_line_terms"):
         terms = c.lst(pq, k, "policy.prequalify", max_len=80)
         for tm in terms:
             if not isinstance(tm, str) or not _TERM_RE.match(tm):
                 c.err(f"policy.prequalify.{k}", f"{tm!r}: lowercase words/phrases only (a trailing * allows a word ending)")
         pq_terms[k] = tuple(tm for tm in terms if isinstance(tm, str) and _TERM_RE.match(tm))
-    for sub, parent in (("generic_terms", "positive_terms"), ("ambiguous_negative_terms", "negative_terms")):
+    for sub, parent in (("generic_terms", "positive_terms"), ("ambiguous_negative_terms", "negative_terms"),
+                        ("service_line_terms", "negative_terms")):
         for tm in pq_terms[sub]:
             if tm not in pq_terms[parent]:
                 c.err(f"policy.prequalify.{sub}", f"{tm!r} must also appear in {parent}")
@@ -533,7 +539,7 @@ def _parse(raw: dict, source_format: str) -> IcpPolicy:
         geography=geo, size=size, target_type=target, screens=tuple(screens), type_profiles=tuple(profiles),
         bonuses=bonuses, penalties=penalties, decision_makers=dmp, tiers=tiers, strong_requirements=strong_req,
         prequalify=PrequalifyPolicy(pq_terms["positive_terms"], pq_terms["negative_terms"], pq_terms["generic_terms"],
-                                    pq_terms["ambiguous_negative_terms"], pq_terms["service_context_terms"]), page_selection=page_sel,
+                                    pq_terms["ambiguous_negative_terms"], pq_terms["service_context_terms"], pq_terms["service_line_terms"]), page_selection=page_sel,
         drafts_enabled=drafts_enabled, source_format=source_format, raw=copy.deepcopy(raw) if isinstance(raw, dict) else {})
     if not c.problems and pol.max_possible_score() < pol.tiers.possible:
         c.err("policy", f"unreachable: the maximum possible score {pol.max_possible_score()} is below tiers.possible "

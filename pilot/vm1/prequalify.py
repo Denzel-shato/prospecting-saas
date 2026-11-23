@@ -142,11 +142,13 @@ class RecordEvidence:
     negative: tuple
     ambiguous_penalised: tuple
     ambiguous_neutralised: tuple
+    service_line_neutralised: tuple = ()
 
     def explain(self) -> dict:
         return {"points": self.points, "matched_specific": list(self.specific), "matched_generic": list(self.generic),
                 "matched_negative": list(self.negative), "ambiguous_penalised": list(self.ambiguous_penalised),
-                "ambiguous_neutralised": list(self.ambiguous_neutralised)}
+                "ambiguous_neutralised": list(self.ambiguous_neutralised),
+                "service_line_neutralised": list(self.service_line_neutralised)}
 
 
 @lru_cache(maxsize=256)
@@ -195,8 +197,23 @@ def record_evidence(attrs: dict, policy: IcpPolicy | dict | None = None) -> Reco
     # A company whose OWN wording names a specific software/product-development specialization is describing
     # services; ambiguous words next to it name its clients' domains. Directory labels alone do not do this.
     self_described = bool(spec_pos)
-    neg_pos = hits([t for t in pq.negative_terms if t not in ambiguous_set], positioning)
-    neg_lab = [t for t in hits([t for t in pq.negative_terms if t not in ambiguous_set], labels) if t not in neg_pos]
+    line_set = set(pq.service_line_terms)
+    plain = [t for t in pq.negative_terms if t not in ambiguous_set]
+    neg_pos = hits(plain, positioning)
+    neg_lab = [t for t in hits(plain, labels) if t not in neg_pos]
+    # A marketing service LABEL beside specific target-service evidence is an additional service line of a mixed
+    # agency, not proof that the target service is irrelevant. First-party positioning stays authoritative: the same
+    # words in the company's own description/tagline are neutral only when that text itself names a specific
+    # specialization. Marketing-only labels, or labels with only generic web terms, keep the penalty.
+    line_neutral = []
+    for t in list(neg_lab):
+        if t in line_set and (spec_pos or spec_lab):
+            neg_lab.remove(t)
+            line_neutral.append(t)
+    for t in list(neg_pos):
+        if t in line_set and self_described:
+            neg_pos.remove(t)
+            line_neutral.append(t)
     penalised, neutralised = [], []
     for where, text in (("positioning", positioning), ("label", labels)):
         for t in hits(pq.ambiguous_negative_terms, text):
@@ -210,7 +227,7 @@ def record_evidence(attrs: dict, policy: IcpPolicy | dict | None = None) -> Reco
     if penalised:
         points -= AMBIG_POSITIONING if any(w == "positioning" for _, w in penalised) else AMBIG_LABEL
     return RecordEvidence(points, tuple(spec_pos + spec_lab), tuple(gen_pos + gen_lab), tuple(neg_pos + neg_lab),
-                          tuple(t for t, _ in penalised), tuple(neutralised))
+                          tuple(t for t, _ in penalised), tuple(neutralised), tuple(line_neutral))
 
 
 def structural_priority(attrs: dict, policy: IcpPolicy | dict | None = None) -> int:
