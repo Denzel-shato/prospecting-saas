@@ -34,7 +34,9 @@ _ROLE = (
 # Some studio cards put a technical role before the leadership role: "Developer and CEO".
 # Keep prefixes constrained to job titles; a standalone "Developer" is not an executive.
 _EXEC_PREFIX = r"(?:developer|engineer|designer|software developer|software engineer|product designer|lead developer)"
+_DEPARTMENT = r"(?:marketing|strategy|operations|product|engineering|design|technology|delivery|creative|growth|finance|sales)"
 _TITLE = (rf"(?i:(?:partner\s*,\s*|{_EXEC_PREFIX}\s+(?:and|&)\s+)?{_ROLE}(?:\s*(?:&|and|/|,)\s*{_ROLE})*(?:\s*(?:&|and|/|,)\s*partner)?"
+          rf"(?:\s*,\s*{_DEPARTMENT}(?:\s*(?:&|and|/)\s*{_DEPARTMENT})?)?"
           r"(?:\s*(?:&|and|/|\+)\s*(?:[A-Za-z]+ ){0,2}[A-Za-z]+)?)")  # title case-insensitive, names are not
 _ORG_TAIL = r"(?:\s+(?i:at|of|@)\s+(?P<org>[\w&.'’ -]{2,50}))?"
 TITLE_ONLY_RE = re.compile(rf"^(?P<title>{_TITLE}){_ORG_TAIL}$")
