@@ -145,10 +145,16 @@ def main() -> int:
     parser.add_argument("--out", type=Path, default=SOURCE / "offline-after-card-fix")
     parser.add_argument("--timeout", type=int, default=12,
                         help="Maximum duration of each offline worker (1–30 seconds)")
+    parser.add_argument("--limit", type=int, default=None,
+                        help="Optionally process only the first N companies as a smoke test")
     args = parser.parse_args()
     if not 1 <= args.timeout <= 30:
         parser.error("--timeout must be 1–30 seconds")
     rows = read_original(args.source)
+    if args.limit is not None:
+        if not 1 <= args.limit <= len(rows):
+            parser.error(f"--limit must be between 1 and {len(rows)}")
+        rows = rows[:args.limit]
     out = args.out
     if out.resolve() == args.source.resolve():
         parser.error("--out must be separate from original benchmark folder")
