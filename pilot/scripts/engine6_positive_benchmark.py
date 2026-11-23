@@ -211,7 +211,7 @@ def main() -> int:
     (out / "snapshots").mkdir(exist_ok=True)
     result_path = out / "results.jsonl"
     previous = results_from(result_path)
-    print(f"12-company positive-control set, processing first {args.limit} (sequential)", flush=True)
+    print(f"{len(targets)}-company positive-control set, processing first {args.limit} (sequential)", flush=True)
     print(f"Per-company hard limit: {args.timeout}s; saved results reused on restart", flush=True)
     print(f"SSL_CERT_FILE: {os.environ.get('SSL_CERT_FILE', '(not set)')}", flush=True)
     try:
