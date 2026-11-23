@@ -29,6 +29,10 @@ Validated by load_policy() in vm1/policy.py. Mandatory: schema_version, id, poli
 - decision_makers.role_classes: founder_ceo, cto_eng, other_leader (limited by the current underlying title extractor).
 - tiers and strong_requirements: numeric thresholds plus optional location/size/capability conditions.
 - prequalify: positive_terms and negative_terms matching discovery descriptions; a final asterisk means word continuation. This only changes prioritization, not fit scoring.
+  Optional ordering vocabulary (all default empty = legacy ordering, other ICPs unaffected): `generic_terms` (subset of
+  positive_terms: broad labels counted once in total), `ambiguous_negative_terms` (subset of negative_terms read in context:
+  neutral when the text says what a studio builds, e.g. "SaaS product development studio"; penalised when it says what the
+  company sells) and `service_context_terms` (words that mark a services provider; required with ambiguous terms).
 - page_selection: relevance_tokens, extra_segments, slot_order, optional service_slug; no override can bypass shared page safety exclusions.
 - drafts.enabled: false until that policy's outreach language is separately validated.
 

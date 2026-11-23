@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "id": "frontend-studio-worldwide-v1",
-  "policy_version": "1.1.0",
+  "policy_version": "1.1.1",
   "name": "Frontend studio -> independent software/product studios worldwide, excluding India",
   "description": "Independent software development and product studios worldwide, excluding India-based firms, roughly 5–50 staff, with relevant frontend delivery work.",
   "seller": "Hypothetical freelance/boutique React/Next.js frontend development studio (dashboards, client portals, SaaS interfaces). Not a real business.",
@@ -186,7 +186,12 @@
       "design and development",
       "development company",
       "development shop",
-      "development firm"
+      "development firm",
+      "product development",
+      "product studio",
+      "software studio",
+      "software house",
+      "software consultancy"
     ],
     "negative_terms": [
       "platform",
@@ -210,6 +215,49 @@
       "fintech",
       "artificial intelligence",
       "machine learning"
+    ],
+    "generic_terms": [
+      "agency",
+      "studio",
+      "consultancy",
+      "consulting",
+      "web design",
+      "web development",
+      "digital agency",
+      "digital design",
+      "outsourc*",
+      "design and development"
+    ],
+    "ambiguous_negative_terms": [
+      "saas",
+      "software as a service",
+      "cloud",
+      "enterprise",
+      "ecommerce",
+      "e-commerce",
+      "fintech",
+      "marketplace",
+      "artificial intelligence",
+      "machine learning",
+      "cybersecurity",
+      "cyber security",
+      "identity",
+      "video game"
+    ],
+    "service_context_terms": [
+      "develop",
+      "develop*",
+      "development",
+      "design",
+      "design*",
+      "engineering",
+      "engineer*",
+      "studio",
+      "agency",
+      "consultancy",
+      "consulting",
+      "build*",
+      "software house"
     ]
   },
   "page_selection": {

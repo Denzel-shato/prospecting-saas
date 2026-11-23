@@ -153,6 +153,14 @@ class StrongRequirements:
 class PrequalifyPolicy:
     positive_terms: tuple
     negative_terms: tuple
+    # Optional ordering vocabulary (Engine #2 specificity). All default empty = legacy ordering.
+    generic_terms: tuple = ()  # subset of positive_terms: broad service labels any agency uses
+    ambiguous_negative_terms: tuple = ()  # subset of negative_terms that can name WHAT a studio builds, not what it sells
+    service_context_terms: tuple = ()  # words that show a services provider (e.g. "development"), used to read ambiguous terms
+
+    @property
+    def uses_specificity(self) -> bool:
+        return bool(self.generic_terms or self.ambiguous_negative_terms)
 
 
 @dataclass(frozen=True)
@@ -499,14 +507,21 @@ def _parse(raw: dict, source_format: str) -> IcpPolicy:
     if strong_req.min_capabilities > sum(1 for x in target.capabilities if x.counts_for_strong):
         c.err("policy.strong_requirements.min_capabilities", "exceeds the number of capabilities with counts_for_strong")
 
-    pq = c.obj(d.get("prequalify"), "policy.prequalify", ("positive_terms", "negative_terms"))
+    pq = c.obj(d.get("prequalify"), "policy.prequalify", ("positive_terms", "negative_terms"),
+               ("generic_terms", "ambiguous_negative_terms", "service_context_terms"))
     pq_terms = {}
-    for k in ("positive_terms", "negative_terms"):
+    for k in ("positive_terms", "negative_terms", "generic_terms", "ambiguous_negative_terms", "service_context_terms"):
         terms = c.lst(pq, k, "policy.prequalify", max_len=80)
         for tm in terms:
             if not isinstance(tm, str) or not _TERM_RE.match(tm):
                 c.err(f"policy.prequalify.{k}", f"{tm!r}: lowercase words/phrases only (a trailing * allows a word ending)")
         pq_terms[k] = tuple(tm for tm in terms if isinstance(tm, str) and _TERM_RE.match(tm))
+    for sub, parent in (("generic_terms", "positive_terms"), ("ambiguous_negative_terms", "negative_terms")):
+        for tm in pq_terms[sub]:
+            if tm not in pq_terms[parent]:
+                c.err(f"policy.prequalify.{sub}", f"{tm!r} must also appear in {parent}")
+    if pq_terms["ambiguous_negative_terms"] and not pq_terms["service_context_terms"]:
+        c.err("policy.prequalify.service_context_terms", "required when ambiguous_negative_terms is set")
     page_sel = _parse_page_selection(c, d.get("page_selection"), "policy.page_selection")
     drafts = c.obj(d.get("drafts", {"enabled": False}), "policy.drafts", ("enabled",))
     drafts_enabled = c.boolean(drafts, "enabled", "policy.drafts", False)
@@ -517,7 +532,8 @@ def _parse(raw: dict, source_format: str) -> IcpPolicy:
         seller=c.text(d, "seller", "policy", required=False, max_len=800), notes=c.text(d, "notes", "policy", required=False, max_len=800),
         geography=geo, size=size, target_type=target, screens=tuple(screens), type_profiles=tuple(profiles),
         bonuses=bonuses, penalties=penalties, decision_makers=dmp, tiers=tiers, strong_requirements=strong_req,
-        prequalify=PrequalifyPolicy(pq_terms["positive_terms"], pq_terms["negative_terms"]), page_selection=page_sel,
+        prequalify=PrequalifyPolicy(pq_terms["positive_terms"], pq_terms["negative_terms"], pq_terms["generic_terms"],
+                                    pq_terms["ambiguous_negative_terms"], pq_terms["service_context_terms"]), page_selection=page_sel,
         drafts_enabled=drafts_enabled, source_format=source_format, raw=copy.deepcopy(raw) if isinstance(raw, dict) else {})
     if not c.problems and pol.max_possible_score() < pol.tiers.possible:
         c.err("policy", f"unreachable: the maximum possible score {pol.max_possible_score()} is below tiers.possible "
