@@ -97,6 +97,37 @@ class FoundPatterns(unittest.TestCase):
         self.assertEqual(dms('<h2>Our Team of engineers &amp; investors</h2>'
                              '<h3>Our Clients</h3><p>Jane Doe, CEO</p>', url=ABOUT), [])
 
+    def test_title_first_executive_on_company_attributed_overview(self):
+        html = (
+            '<h1>Nearshoring with Acme Studio</h1>'
+            '<h2>Company Overview</h2>'
+            '<p>Founded: 2018</p>'
+            '<p>CEO &amp; Founder: Christian Bolz</p>'
+            '<p>Company Size: 11-50 employees</p>'
+        )
+        found = dms(html, url="https://acme.example/nearshoring-en")
+        self.assertEqual([(p.name, p.title, p.basis) for p in found],
+                         [('Christian Bolz', 'CEO & Founder', 'own_company_overview')])
+
+    def test_unattributed_company_overview_still_unknown(self):
+        html = '<h2>Company Overview</h2><p>CEO &amp; Founder: Jane Doe</p>'
+        self.assertEqual(dms(html, url="https://acme.example/nearshoring-en"), [])
+
+    def test_named_other_company_overview_does_not_claim_ceo(self):
+        html = ('<h1>Nearshoring with Clientco</h1><h2>Company Overview</h2>'
+                '<p>CEO &amp; Founder: Jane Doe</p>')
+        self.assertEqual(dms(html, url="https://acme.example/nearshoring-en"), [])
+
+    def test_company_overview_in_client_section_keeps_veto(self):
+        html = ('<h1>Nearshoring with Acme Studio</h1><h2>Our Clients</h2>'
+                '<h3>Company Overview</h3><p>CEO &amp; Founder: Jane Doe</p>')
+        self.assertEqual(dms(html, url="https://acme.example/nearshoring-en"), [])
+
+    def test_company_name_only_not_enough_without_overview(self):
+        html = ('<h1>Nearshoring with Acme Studio</h1><h2>Contact Information</h2>'
+                '<p>CEO &amp; Founder: Jane Doe</p>')
+        self.assertEqual(dms(html, url="https://acme.example/nearshoring-en"), [])
+
     def test_jsonld_founder_of_matching_organisation(self):
         ld = {"@type": "Organization", "name": "Acme Studio",
               "founder": {"@type": "Person", "name": "José García", "jobTitle": "Founder"}}
