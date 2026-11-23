@@ -147,10 +147,18 @@ def main() -> int:
                         help="Maximum duration of each offline worker (1–30 seconds)")
     parser.add_argument("--limit", type=int, default=None,
                         help="Optionally process only the first N companies as a smoke test")
+    parser.add_argument("--only", action="append", metavar="DOMAIN",
+                        help="Test just one company domain from the saved benchmark (repeatable)")
     args = parser.parse_args()
     if not 1 <= args.timeout <= 30:
         parser.error("--timeout must be 1–30 seconds")
     rows = read_original(args.source)
+    if args.only:
+        wanted = set(args.only)
+        known = {r["domain"] for r in rows}
+        if wanted - known:
+            parser.error(f"Unknown domain(s): {sorted(wanted - known)}")
+        rows = [r for r in rows if r["domain"] in wanted]
     if args.limit is not None:
         if not 1 <= args.limit <= len(rows):
             parser.error(f"--limit must be between 1 and {len(rows)}")
