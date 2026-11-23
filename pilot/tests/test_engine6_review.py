@@ -136,6 +136,34 @@ class Engine6Review(unittest.TestCase):
         self.assertEqual([(p.name, p.title) for p in people(html)],
                          [('Reuben Hall', 'CEO')])
 
+    def test_wordpress_generated_post_content_layout_subclass_not_editorial(self):
+        # Exact MindSea-style wrapper. Splitting its class tokens previously
+        # labelled the entire own-company leadership page as editorial.
+        html = (
+            '<body class="wp-singular page-template-default page page-id-289 '
+            'wp-custom-logo wp-theme-mindsea">'
+            '<div class="entry-content wp-block-post-content is-layout-flow '
+            'wp-block-post-content-is-layout-flow">'
+            '<h2>Meet the Team</h2><h3>Leadership</h3>'
+            '<h4 id="h-reuben-hall">Reuben Hall</h4>'
+            '<p>Chief Executive Officer • Halifax, NS</p>'
+            '<p>Reuben Hall is the CEO of Acme Studio, a digital product agency.</p>'
+            '</div></body>'
+        )
+        found = people(html)
+        self.assertEqual([(p.name, p.title, p.basis) for p in found],
+                         [('Reuben Hall', 'CEO', 'explicit_org_match')])
+        self.assertTrue(verify_excerpt_parts(found[0].excerpt_parts,
+                                              snap(html, 'https://acme.example/team').page))
+
+    def test_wordpress_layout_exemption_does_not_hide_real_editorial_or_client_class(self):
+        for kind in ('post-author', 'blog', 'testimonial', 'client-logo'):
+            html = (
+                '<h2>Meet the Team</h2><div class="wp-block-post-content-is-layout-flow '
+                + kind + '"><p>Jane Doe is the CEO of Acme Studio.</p></div>'
+            )
+            self.assertEqual(people(html), [], kind)
+
     def test_actual_testimonial_and_post_author_classes_still_veto(self):
         for kind in ('client-logo', 'post-author', 'testimonial'):
             html = ('<h2>Team</h2><div class="' + kind + '">'
