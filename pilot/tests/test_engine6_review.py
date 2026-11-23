@@ -25,6 +25,8 @@ class Engine6Review(unittest.TestCase):
         self.assertEqual(people(body)[0].name, 'Jane Doe')
         self.assertEqual(people('<div class="testimonial">'+body+'</div>'), [])
         self.assertEqual(people(body.replace('<article ', '<article class="blog" ')), [])
+        self.assertEqual(people(body.replace('<article ', '<article id="blog" ')), [])
+        self.assertEqual(people(body.replace('<article ', '<article itemprop="author" ')), [])
         self.assertEqual(people('<article><h3>Jane Doe</h3><p>CEO</p></article>'), [])
 
     def test_graph_affiliation_and_reference_cycles(self):

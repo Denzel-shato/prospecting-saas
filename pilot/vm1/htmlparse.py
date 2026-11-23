@@ -261,10 +261,7 @@ class _PeopleExtractor(_Extractor):
     def _labels(tag, attrs):
         labels = set(_Extractor._labels(tag, attrs))
         if tag == 'article' and attrs.get('itemtype', '').rstrip('/').endswith('/Person'):
-            labels.discard('editorial')
-            for token in _TOKEN_SPLIT.split(attrs.get('class', '').lower()):
-                if ATTR_CTX_TOKENS.get(token) == 'editorial':
-                    labels.add('editorial')
+            labels = set(_Extractor._labels('div', attrs))
         return frozenset(labels)
 
     def handle_starttag(self, tag, attrs):
