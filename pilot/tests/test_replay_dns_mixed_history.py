@@ -57,6 +57,41 @@ class TransientDnsReplayTests(unittest.TestCase):
             fetcher.fetch(f"https://{self.host}/not-captured")
         self.assertEqual(fetcher.missing, [f"https://{self.host}/not-captured"])
 
+    def test_page_dns_failure_is_replayed_from_capture_manifest(self):
+        self.save(f"https://{self.host}/robots.txt", status=404, content_type="text/plain")
+        self.save(self.home, body=b"<html>Saved homepage</html>")
+        missing_page = f"https://{self.host}/about-us/"
+        manifest = self.store.read_manifest()
+        manifest["companies"] = [{
+            "homepage": self.home,
+            "homepage_error": None,
+            "page_errors": {missing_page: "unsafe_url: host did not resolve"},
+        }]
+        self.store.write_manifest(manifest)
+
+        fetcher = ReplayFetcher(self.store, strict=True)
+        self.assertTrue(fetcher.fetch(self.home).ok)
+        failure = fetcher.fetch(missing_page)
+        self.assertFalse(failure.ok)
+        self.assertEqual(failure.error, "unsafe_url: host did not resolve")
+        self.assertEqual(failure.fetched_at, manifest["started_at"])
+        self.assertEqual(fetcher.missing, [])
+
+    def test_saved_http_response_wins_over_conflicting_page_dns_failure(self):
+        self.save(f"https://{self.host}/robots.txt", status=404, content_type="text/plain")
+        self.save(self.home, body=b"<html>Saved homepage</html>")
+        manifest = self.store.read_manifest()
+        manifest["companies"] = [{
+            "homepage": self.home,
+            "homepage_error": "unsafe_url: host did not resolve",
+            "page_errors": {},
+        }]
+        self.store.write_manifest(manifest)
+
+        result = ReplayFetcher(self.store, strict=True).fetch(self.home)
+        self.assertTrue(result.ok, result.error)
+        self.assertEqual(result.status, 200)
+
     def test_dns_failure_with_no_saved_http_response_remains_unreachable(self):
         # A transport-level failure with status=None is not evidence of HTTP success.
         self.save(self.home, status=None, error={"type": "gaierror"})
