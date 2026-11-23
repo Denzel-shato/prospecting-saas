@@ -59,6 +59,25 @@ class FoundPatterns(unittest.TestCase):
     def test_technical_role_alone_does_not_become_decision_maker(self):
         self.assertEqual(dms('<h2>Team</h2><p>Jane Doe</p><p>Developer</p>'), [])
 
+    def test_partner_first_ceo_title_on_realistic_team_card(self):
+        html = (
+            '<h2>Our Team of tech strategists, designers, engineers, experts & investors</h2>'
+            '<div class="all-team"><div class="team-wrapper">'
+            '<div class="team-member" data-name="Kevin Yamazaki1">'
+            '<div class="team-img"><img src="/kevin.png" alt="Kevin Yamazaki"/></div>'
+            '<p class="emp-name"><span class="first-name">Kevin Yamazaki</span></p>'
+            '<span class="job-title">Partner, CEO</span>'
+            '</div><div class="team-member"><span>Alex Sample</span>'
+            '<span>Senior Architect</span></div></div></div>'
+        )
+        found = dms(html, url=ABOUT)
+        self.assertEqual([(p.name, p.title, p.role_class) for p in found],
+                         [("Kevin Yamazaki", "Partner, CEO", "founder_ceo")])
+
+    def test_partner_first_cto_and_no_title_only_partner(self):
+        self.assertEqual(dms('<h2>Our Team</h2><p>Jane Doe, Partner, CTO</p>')[0].role_class, "cto_eng")
+        self.assertEqual(dms('<h2>Our Team</h2><p>Jane Doe</p><p>Partner</p>'), [])
+
     def test_jsonld_founder_of_matching_organisation(self):
         ld = {"@type": "Organization", "name": "Acme Studio",
               "founder": {"@type": "Person", "name": "José García", "jobTitle": "Founder"}}
