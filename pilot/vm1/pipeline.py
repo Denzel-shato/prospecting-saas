@@ -140,6 +140,18 @@ def fetch_secondary_pages(fetcher, home_url, ranked, limit, page_policy):
         page = parse_html(res.text or "", url) if res.ok else None
         seen.add(canonical_key(url))
         yield sel, res, page
+        if page is not None and used < limit and sel.category == "about":
+            children = rank_candidates(page.links, home_url, page_policy)
+            child = next((s for s in children if s.category == "team" and canonical_key(s.url) not in seen), None)
+            if child is not None:
+                child = known.setdefault(canonical_key(child.url), child)
+                if child not in ranked:
+                    ranked.append(child)
+                child.reason += f", linked from {url}"
+                plan = [child] + [s for s in plan if canonical_key(s.url) != canonical_key(child.url)]
+                while used + len(plan) > limit:
+                    displaced = plan.pop()
+                    displaced.selected, displaced.slot = False, None
         if (page is None or used >= limit or sel.category != "project_index" or
                 project_path(urlsplit(url).path) != "index"):
             continue
@@ -237,6 +249,11 @@ def research_company(cand: Candidate, fetcher: PoliteFetcher,
                 "verified_evidence_ids": sorted(verified_ids),
                 "decision_makers": [d.to_dict() for d in dms], "score": score.to_dict(),
                 "tier": score.tier, "total": score.total, "company_type": score.company_type})
+    people_pages = [s for s in rec["secondary"] if s.get("category") in {"team", "about"}]
+    rec["decision_maker_outcome"] = (
+        "named" if dms else "homepage_unreachable" if not res.ok else
+        "no_attributable_person_extracted" if any(s.get("ok") for s in people_pages) else
+        "people_pages_inaccessible" if people_pages else "no_people_page_fetched")
     return rec
 
 

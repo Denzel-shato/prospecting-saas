@@ -262,6 +262,8 @@ def classify_link(href: str, text: str, home_host: str = "",
         return "service_other", f"service page under '/{first}/' without ICP terms", []
     for cat, names in r.cat_segs:
         if first in names:
+            if cat in {"about", "team"} and any(s in TEAM_SEGS for s in segs):
+                return "team", "leadership page within company section", []
             if len(segs) == 1:
                 return cat, f"path segment '{first}'", []
             return "detail", f"sub-page of '/{first}/' ({cat}); lower value", []

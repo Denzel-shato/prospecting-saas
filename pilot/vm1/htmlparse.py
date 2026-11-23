@@ -59,6 +59,9 @@ class PageData:
     # Empty lists (e.g. a hand-built PageData) mean "context unknown", never "context is clean".
     block_ctx: list[frozenset] = field(default_factory=list)
     block_section: list[str] = field(default_factory=list)
+    people_blocks: list[str] = field(default_factory=list)
+    people_ctx: list[frozenset] = field(default_factory=list)
+    people_sections: list[str] = field(default_factory=list)
 
     def ctx_at(self, i: int) -> frozenset:
         return self.block_ctx[i] if 0 <= i < len(self.block_ctx) else frozenset()
@@ -69,7 +72,7 @@ class PageData:
     def verifiable_texts(self) -> list[str]:
         """Every string an excerpt may legitimately be copied from."""
         extra = [t for t in (self.title, self.meta_description, self.site_name) if t]
-        return [*self.blocks, *extra, *self.jsonld_raw]
+        return [*self.blocks, *self.people_blocks, *extra, *self.jsonld_raw]
 
     def jsonld_nodes(self) -> Iterator[dict]:
         for raw in self.jsonld_raw:
@@ -224,6 +227,14 @@ def parse_html(html: str, url: str) -> PageData:
     except Exception:  # malformed markup must never crash a run
         pass
     ex._flush()
+    # A separate view preserves inline card boundaries without changing service evidence.
+    people = _PeopleExtractor(url)
+    try:
+        people.feed(html)
+        people.close()
+    except Exception:
+        pass
+    people._flush()
     return PageData(
         url=url,
         title=norm_ws("".join(ex.title_parts))[:300],
@@ -234,4 +245,39 @@ def parse_html(html: str, url: str) -> PageData:
         jsonld_raw=ex.jsonld_raw,
         block_ctx=ex.block_ctx,
         block_section=ex.block_section,
+        people_blocks=people.blocks,
+        people_ctx=people.block_ctx,
+        people_sections=people.block_section,
     )
+
+
+class _PeopleExtractor(_Extractor):
+    """Split inline card fields; article is allowed only with explicit Person markup.
+
+    Editorial classes and testimonial/client ancestors retain their vetoes.
+    The ordinary evidence parser remains unchanged.
+    """
+    @staticmethod
+    def _labels(tag, attrs):
+        labels = set(_Extractor._labels(tag, attrs))
+        if tag == 'article' and attrs.get('itemtype', '').rstrip('/').endswith('/Person'):
+            labels.discard('editorial')
+            for token in _TOKEN_SPLIT.split(attrs.get('class', '').lower()):
+                if ATTR_CTX_TOKENS.get(token) == 'editorial':
+                    labels.add('editorial')
+        return frozenset(labels)
+
+    def handle_starttag(self, tag, attrs):
+        if tag == 'span':
+            self._flush()
+        super().handle_starttag(tag, attrs)
+
+    def handle_endtag(self, tag):
+        if tag == 'span':
+            self._flush()
+        super().handle_endtag(tag)
+        if tag in {'div', 'article', 'li'} and len(self.blocks) < MAX_BLOCKS:
+            # Do not pair a dangling name in one card with a title in the next.
+            self.blocks.append('')
+            self.block_ctx.append(frozenset())
+            self.block_section.append('')

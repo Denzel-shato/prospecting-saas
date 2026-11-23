@@ -77,6 +77,7 @@ def compute_metrics(run: dict, labels: dict[str, dict] | None = None) -> dict:
     m["dispositions"] = Counter((c.get("score") or {}).get("disposition") or "unrecorded" for c in comps)
     eligible = [c for c in comps if c["tier"] not in (EXCLUDED, NOT_RESEARCHABLE)]
     m["dm_named"] = sum(1 for c in eligible if c["decision_makers"])
+    m["dm_outcomes"] = dict(Counter(c.get("decision_maker_outcome", "unrecorded") for c in eligible))
     m["eligible"] = len(eligible)
     m["raw_discovered"] = man["counts"]["discovered_raw"]
     m["pool"] = man["counts"]["after_dedup_pool"]
@@ -248,6 +249,8 @@ def render_report(run: dict, m: dict) -> str:
         L.append(f"| Decision-maker correct (labels) | {_frac(m['dm_correct'], m['dm_labeled'])} | >=70% top-1 | wrong-person rate {1 - m['dm_correct'] / m['dm_labeled']:.0%} (ref <=5%) |")
     L.append("")
     L.append("Tier counts: " + ", ".join(f"{k}={v}" for k, v in sorted(m["tiers"].items())))
+    L.append("Decision-maker outcomes (eligible companies): " + ", ".join(
+        f"{k}={v}" for k, v in sorted(m["dm_outcomes"].items())))
     L.append("Dispositions (confirmed disqualification vs missing information): "
              + ", ".join(f"{k}={v}" for k, v in sorted(m["dispositions"].items())))
     L.append("")
@@ -260,7 +263,7 @@ def render_report(run: dict, m: dict) -> str:
         L.append("|---|---|---|---|---|---|---|---|")
         for i, x in enumerate(ranked, 1):
             dm = x["decision_makers"][0] if x["decision_makers"] else None
-            dm_s = f"{dm['name']}, {dm['title']}" if dm else "unknown"
+            dm_s = f"{dm['name']}, {dm['title']}" if dm else f"unknown ({x.get('decision_maker_outcome', 'unrecorded')})"
             why = "; ".join(f"{p['points']:+d} {p['rule']}" for p in x["score"]["components"])
             why = why if len(why) <= 400 else why[:397] + "..."
             L.append(f"| {i} | {x['domain']} | {x['total']} | {x['tier']} | {x.get('company_type', 'n/a')} | "

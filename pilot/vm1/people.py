@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 
 from .context import (NON_SELF_KINDS, TEAM_SECTION_RE, THIRD_PARTY_CTX, THIRD_PARTY_SECTION_RE,
                       looks_like_quote_neighbour, page_kind)
@@ -90,7 +90,7 @@ class DecisionMaker:
 
 def _role_class(title: str) -> tuple[str, int]:
     t = title.lower()
-    if re.search(r"found(?:er|ing)|ceo|chief executive|owner|president|managing (?:director|partner)", t):
+    if re.search(r"found(?:er|ing)|ceo|chief executive|owner|(?<!vice )\bpresident\b|managing (?:director|partner)", t):
         return "founder_ceo", 1
     if re.search(r"cto|chief technology|engineering|technology|delivery", t):
         return "cto_eng", 2
@@ -120,7 +120,7 @@ def org_matches(org: str | None, company_key: str | None, company_name: str | No
         return False
     for form in name_forms(company_key or "", company_name):
         f = _norm_org(form)
-        if len(f) >= 4 and (o == f or o.startswith(f) or f.startswith(o) and len(o) >= 4):
+        if len(f) >= 4 and o == f:
             return True
     return False
 
@@ -135,37 +135,68 @@ _ORG_TYPES = {"Organization", "Corporation", "LocalBusiness", "ProfessionalServi
 
 def _types(node: dict) -> set[str]:
     t = node.get("@type")
-    return set(t) if isinstance(t, list) else {t} if isinstance(t, str) else set()
+    return {v for v in t if isinstance(v, str)} if isinstance(t, list) else {t} if isinstance(t, str) else set()
 
 
 def _jsonld_people(page, company_key, company_name):
     """Yield (name, title) for Person nodes credibly affiliated with the TARGET organisation."""
-    def walk(node, keys, org):
+    index = {}
+    duplicates = set()
+    documents = []
+    def collect(node, depth=0):
+        if depth > 40:
+            return
+        if isinstance(node, list):
+            for value in node:
+                collect(value, depth + 1)
+        elif isinstance(node, dict):
+            ident = node.get('@id')
+            if isinstance(ident, str) and len(node) > 1:
+                if ident in index and index[ident] != node:
+                    duplicates.add(ident)
+                index[ident] = node
+            for value in node.values():
+                collect(value, depth + 1)
+    for raw in page.jsonld_raw:
+        try:
+            data = json.loads(raw)
+        except (ValueError, RecursionError):
+            continue
+        documents.append(data)
+        collect(data)
+
+    def resolve(node):
+        if isinstance(node, dict) and set(node) == {'@id'}:
+            ident = node['@id']
+            if isinstance(ident, str) and ident not in duplicates:
+                return index.get(ident, node)
+        return node
+
+    def walk(node, keys, org, depth=0):
+        if depth > 40 or set(keys) & _BAD_JSONLD_KEYS:
+            return
+        node = resolve(node)
         if isinstance(node, list):
             for v in node:
-                yield from walk(v, keys, org)
+                yield from walk(v, keys, org, depth + 1)
         elif isinstance(node, dict):
             types = _types(node)
             if types & _ORG_TYPES and isinstance(node.get("name"), str):
                 org = node["name"]
             if "Person" in types and not (set(keys) & _BAD_JSONLD_KEYS):
                 name, title = node.get("name"), node.get("jobTitle")
-                works_for = node.get("worksFor")
+                works_for = resolve(node.get("worksFor"))
                 wf = works_for.get("name") if isinstance(works_for, dict) else None
-                affiliated = org_matches(wf, company_key, company_name) or (
+                affiliated = (org_matches(wf, company_key, company_name) if works_for is not None else
                     bool(set(keys) & _GOOD_JSONLD_KEYS) and org_matches(org, company_key, company_name))
                 if affiliated and isinstance(name, str) and isinstance(title, str):
                     yield name, title
             for k, v in node.items():
-                if k.startswith("@"):
+                if k.startswith("@") and k != "@graph":
                     continue
-                yield from walk(v, keys + [k], org)
+                yield from walk(v, keys + [k], org, depth + 1)
 
-    for raw in page.jsonld_raw:
-        try:
-            data = json.loads(raw)
-        except ValueError:
-            continue
+    for data in documents:
         yield from walk(data, [], None)
 
 
@@ -179,7 +210,7 @@ def find_decision_makers(snaps: list[PageSnapshot], limit: int = 3, *, company_k
             return
         cls, rank = _role_class(title)
         prev = found.get(name.lower())
-        if prev is not None and not (rank <= prev.rank and len(title) > len(prev.title)):
+        if prev is not None and not (rank < prev.rank or rank == prev.rank and len(title) > len(prev.title)):
             return  # already have this person; only replace with a more specific title
         found[name.lower()] = DecisionMaker(
             name=name, title=title, role_class=cls, source_url=snap.url, fetched_at=snap.fetched_at,
@@ -199,6 +230,9 @@ def find_decision_makers(snaps: list[PageSnapshot], limit: int = 3, *, company_k
         return None
 
     for snap in snaps:
+        if snap.page.people_blocks:
+            snap = replace(snap, page=replace(snap.page, blocks=snap.page.people_blocks,
+                block_ctx=snap.page.people_ctx, block_section=snap.page.people_sections))
         page = snap.page
         kind = page_kind(snap.url, snap.is_homepage)
         if kind in NON_SELF_KINDS:
@@ -211,8 +245,6 @@ def find_decision_makers(snaps: list[PageSnapshot], limit: int = 3, *, company_k
                 continue  # testimonial / client / partner / editorial structure
             if looks_like_quote_neighbour(page, i):
                 continue  # attribution line under a quotation
-            if looks_like_quote_neighbour(page, i):
-                continue
             for pm in (PROSE_IS_RE.search(block), PROSE_IAM_RE.search(block)):
                 if pm and org_matches(pm.group("org"), company_key, company_name):
                     add(pm.group("name"), pm.group("title"), snap, [block], "explicit_org_match")
@@ -252,6 +284,7 @@ def find_decision_makers(snaps: list[PageSnapshot], limit: int = 3, *, company_k
                 return text in raw or json.dumps(text)[1:-1] in raw
 
             if TITLE_ONLY_RE.match(title.strip()) and present(name) and present(title):
-                add(name, title, snap, [name, title], "jsonld_org")
+                parts = [text if text in raw else json.dumps(text)[1:-1] for text in (name, title)]
+                add(name, title, snap, parts, "jsonld_org")
     ranked = sorted(found.values(), key=lambda d: d.rank)  # stable: page order within a rank
     return ranked[:limit]

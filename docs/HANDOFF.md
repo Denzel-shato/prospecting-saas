@@ -1,5 +1,42 @@
 # Project handoff — 2026-11-21
 
+## Engine #6 recovery review — 2026-11-23
+
+Completion addendum: see `docs/VM1-ENGINE6-RECOVERY-AUDIT.md`. The subsequent
+batch adds separate inline people parsing, explicit Person article cards,
+cross-card boundaries, local JSON-LD reference resolution, report summary and
+research-to-report regressions. Full suite 471 passes; all four ICPs valid.
+Fictional comparable evaluation: positives 1/4 -> 4/4, false positives 2/4 -> 0/4.
+No live-quality claim. Prior paragraph's remaining implementation work is superseded
+by this addendum; real captured-page validation remains pending permission/data.
+
+Rebuilt from remote `f8035e1`; the reported Claude commits c087ac0,
+1320160 and f25dddc were unavailable from GitHub. This is independent work,
+not confirmation or recreation of those exact commits.
+
+Confirmed and fixed: nested about/team links ranked as low-value details;
+About-page leadership links never followed; organisation-prefix collisions;
+engineering VPs incorrectly ranked as CEOs; shorter founder titles losing to
+engineering titles; malformed JSON-LD type arrays crashing extraction;
+escaped Unicode names extracted then dropped by excerpt verification;
+explicit conflicting employer ignored under a matching parent organisation.
+
+Added per-company decision_maker_outcome and eligible-company counters;
+unknown report entries show the recorded cause or unrecorded for old runs.
+An extraction outcome means no attributable person was extracted from fetched
+company pages, not proof that an identifiable person was missed.
+
+Validation: 464 offline tests pass (455 baseline), four policies validate,
+git diff --check passes. Nine new fictional regression tests. No live requests
+or measured real-company coverage improvement. No discovery/ranking/scoring changes.
+
+Remaining: inline span name/title structures and article-based team cards still
+need safe structural attribution work; JSON-LD graph references are not resolved.
+The original 10-company captured pages were unavailable. Replay those same pages
+when available, independently label correct/incorrect names and identifiable
+misses, then authorize a bounded live capture only for missing leadership pages.
+Do not claim the full Engine #6 audit is complete or coverage improved from these tests.
+
 ## Current state
 **VM1 PILOT AUTHORIZED 2026-11-21.** The architecture is approved as a *design*, and the user explicitly authorized local disposable VM1 pilot work: **one ICP, 30–40 US companies, no Gmail, $0 paid-API spending**. No pilot implementation or API use was reported before this approval. No Phase 1, expanded VM1, sending, or paid API usage is authorized.
 
