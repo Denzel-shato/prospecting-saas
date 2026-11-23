@@ -137,12 +137,15 @@ class _Extractor(HTMLParser):
             if attr == "class":
                 # WordPress layout classes are not declarations that a team page
                 # contains client logos or editorial blog-post authors.
-                # Only known structural classes are exempt. Actual client-logo,
-                # testimonial, post-author, etc. classes retain their vetoes.
+                # In particular, wp-block-post-content-is-layout-* contains the
+                # token "post", but denotes a CSS-generated content layout, not
+                # an authored article or editorial byline. Real client-logo,
+                # testimonial and post-author classes retain their vetoes.
                 value = " ".join(
                     cls for cls in value.split()
                     if cls not in {"wp-custom-logo", "wp-block-site-logo",
                                    "wp-block-post-content"}
+                    and not cls.startswith("wp-block-post-content-is-layout-")
                 )
             for tok in _TOKEN_SPLIT.split(value):
                 if tok in ATTR_CTX_TOKENS:
