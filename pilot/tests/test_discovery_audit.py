@@ -136,3 +136,109 @@ class PickAnAgencyStrategyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ----------------------------------------------------------------------------------------------- other adapters
+from vm1.discovery import DrupalOrgAdapter, OverpassAdapter, WikidataAdapter  # noqa: E402
+
+
+def b(item, label, site, **kw):
+    row = {"item": {"value": f"http://www.wikidata.org/entity/{item}"}, "itemLabel": {"value": label},
+           "website": {"value": site}}
+    for k, v in kw.items():
+        row[k] = {"value": v}
+    return row
+
+
+class WikidataHygieneTests(unittest.TestCase):
+    def parse(self, rows, **kw):
+        ad = WikidataAdapter(ApiClient(transport=object()), **kw)
+        return ad, ad.parse({"results": {"bindings": rows}}, "t")
+
+    def test_multi_valued_rows_merge_to_one_candidate_with_order_independent_result(self):
+        rows = [b("Q1", "Foo", "https://www.foo.example/b", employees="9"),
+                b("Q1", "Foo", "https://foo.example/a", employees="4000", listed="false"),
+                b("Q1", "Foo", "https://foo.example/a", employees="9")]
+        ad, got = self.parse(rows)
+        _, got_rev = self.parse(list(reversed(rows)))
+        self.assertEqual(len(got), 1)
+        self.assertEqual(got[0].attrs["employees"], 4000, "largest headcount wins: stale small values never promote")
+        self.assertEqual((got[0].url, got[0].attrs), (got_rev[0].url, got_rev[0].attrs))
+        self.assertEqual(ad.yield_stats["merged_duplicate_rows"], 2)
+        self.assertEqual(ad.yield_stats["multi_headcount_items"], 1)
+
+    def test_distinct_items_and_invalid_rows_are_counted_not_merged(self):
+        ad, got = self.parse([b("Q1", "A", "https://a.example"), b("Q2", "B", "https://b.example"),
+                              {"item": {"value": "x"}}])
+        self.assertEqual([c.name for c in got], ["A", "B"])
+        self.assertEqual((ad.yield_stats["rows"], ad.yield_stats["invalid_rows"]), (3, 1))
+
+    def test_enriched_query_excludes_only_explicitly_dissolved_companies_basic_query_unchanged(self):
+        ad = WikidataAdapter(None)
+        self.assertIn("FILTER NOT EXISTS { ?item wdt:P576 ?dissolved . }", ad.build_query(enriched=True))
+        self.assertNotIn("P576", ad.build_query(enriched=False))
+        self.assertIn("ORDER BY ?item", ad.build_query(enriched=True))
+
+
+class DrupalRecordTextTests(unittest.TestCase):
+    def discover(self, rows, **kw):
+        class Client:
+            def request_json(self, method, url):
+                return {"list": rows}
+        ad = DrupalOrgAdapter(Client(), **kw)
+        return ad, {c.domain: c for c in ad.discover()}
+
+    def row(self, i, title, text, location="Denver, CO"):
+        return {"type": "organization", "nid": str(i), "title": title, "field_link": {"url": f"https://d{i}.example"},
+                "field_organization_headquarters": location, "body": {"value": f"<p>{text}</p>"}}
+
+    def test_profile_excerpt_and_identity_hints_reach_the_record_text_fields(self):
+        long = "We are a custom software development studio. " + "x" * 400
+        rows = [self.row(1, "Build Co", long), self.row(2, "Growth Co", "A marketing agency for brands.")]
+        ad, got = self.discover(rows)
+        self.assertEqual(len(got["d1.example"].attrs["directory_tagline"]), 200)
+        self.assertTrue(got["d1.example"].attrs["directory_software_focus_hint"])
+        self.assertTrue(got["d2.example"].attrs["directory_marketing_focus_hint"])
+        self.assertFalse(got["d2.example"].attrs["directory_software_focus_hint"])
+        self.assertEqual((ad.yield_stats["software_focus_hint"], ad.yield_stats["marketing_focus_hint"]), (1, 1))
+        self.assertEqual(got["d1.example"].source_url, "https://www.drupal.org/node/1")
+        self.assertIn("CC BY-SA", got["d1.example"].source_license)
+
+    def test_unknown_headquarters_in_worldwide_mode_is_kept_but_counted(self):
+        ad, got = self.discover([self.row(1, "Anywhere", "A development agency.", location="")], worldwide=True)
+        self.assertIn("d1.example", got)
+        self.assertEqual(ad.yield_stats["location_unknown_kept"], 1)
+
+    def test_discovery_text_never_becomes_size_or_location_evidence(self):
+        _, got = self.discover([self.row(1, "Studio", "A development agency, 500 employees.")])
+        ev = apply_discovery_record("d1.example", got["d1.example"], [])
+        self.assertFalse([e for e in ev if e.claim_type.startswith("size")])
+
+
+class OverpassHygieneTests(unittest.TestCase):
+    def parse(self, els):
+        ad = OverpassAdapter(ApiClient(transport=object()), True)
+        return ad, ad.parse({"elements": els}, "t")
+
+    def test_branch_duplicates_retail_tags_and_social_pages_are_counted_not_researched(self):
+        els = [{"type": "node", "id": 1, "tags": {"name": "Code HQ", "website": "https://codehq.example"}},
+               {"type": "way", "id": 2, "tags": {"name": "Code HQ (annex)", "website": "http://www.codehq.example/about"}},
+               {"type": "node", "id": 3, "tags": {"name": "PC Fix", "website": "https://pcfix.example", "shop": "computer"}},
+               {"type": "node", "id": 4, "tags": {"name": "Page", "website": "https://facebook.com/page"}},
+               {"type": "node", "id": 5, "tags": {"name": "No site"}},
+               {"type": "node", "id": 6, "tags": {"name": "Labs", "website": "labs.example",
+                                                   "description": "Web app development studio"}}]
+        ad, got = self.parse(els)
+        self.assertEqual([c.domain for c in got], ["codehq.example", "labs.example"])
+        self.assertEqual(got[0].source_id, "node/1", "first object keeps provenance")
+        self.assertEqual(got[1].attrs["description"], "Web app development studio")
+        self.assertEqual(got[0].attrs["country"], "US")
+        s = ad.yield_stats
+        self.assertEqual((s["elements"], s["duplicate_domain"], s["retail_tagged"], s["no_website_domain"],
+                          s["no_name_or_website"], s["candidates"]), (6, 1, 1, 1, 1, 2))
+
+    def test_query_and_acknowledgement_gate_are_unchanged(self):
+        ad = OverpassAdapter(ApiClient(transport=object()), False)
+        self.assertIn('nwr["office"="it"]["website"](area.us)', ad.build_query())
+        with self.assertRaises(DiscoveryBlocked):
+            ad.discover()

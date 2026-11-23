@@ -104,7 +104,11 @@ class EveryAdapterThroughEveryIcp(unittest.TestCase):
                     self.assertEqual([r.candidate.domain for r in rows], [r.candidate.domain for r in again])
                     self.assertEqual(sorted(r.candidate.domain for r in rows), sorted(c.domain for c in pool))
                     priorities = [r.priority for r in rows]
-                    self.assertEqual(priorities, sorted(priorities, reverse=True))
+                    # Drupal.org candidates now carry their own profile excerpt (Engine #1), so under a
+                    # specificity-aware policy Engine #2 legitimately ranks them by record evidence rather than by the
+                    # wording-derived integer priority. Every other adapter/policy keeps the strict invariant.
+                    if not (name == "drupal_org" and policy.prequalify.uses_specificity):
+                        self.assertEqual(priorities, sorted(priorities, reverse=True))
                     for r in rows:  # the integer priority is exactly prequalify(): text never alters it
                         self.assertEqual((r.priority, r.reasons), prequalify(r.candidate.attrs, policy))
 

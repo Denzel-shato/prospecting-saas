@@ -23,6 +23,7 @@ from urllib.parse import quote, urlencode, urlsplit
 
 from . import USER_AGENT
 from .canon import canonical_domain, is_first_party_candidate
+from .discovery_hints import identity_hints
 from .fetch import NETWORK_ERRORS, PinnedTransport, Transport, utc_now_iso
 from .guard import FREE_KEYLESS, PaidApiBlocked, require_zero_cost
 from .htmlparse import parse_html
@@ -178,7 +179,10 @@ class WikidataAdapter(Adapter):
         # ICP already treats as hard (listed on an exchange, reported headcount above the hard maximum) are
         # therefore applied BEFORE the LIMIT so the window is spent on plausible candidates. Missing headcount
         # stays eligible (unknown is never an exclusion).
-        window = (f"FILTER(!?listed)\n  FILTER(!BOUND(?employees) || ?employees <= {int(self.hard_max)})")
+        # A dissolved/defunct company (end-time statement P576) has no future to prospect; exclusion is by an explicit
+        # statement only, so records with no dissolution data stay eligible.
+        window = (f"FILTER(!?listed)\n  FILTER(!BOUND(?employees) || ?employees <= {int(self.hard_max)})\n"
+                  f"  FILTER NOT EXISTS {{ ?item wdt:P576 ?dissolved . }}")
         # ?desc (English item description) and ?listed (has a stock-exchange statement) are used ONLY
         # for pre-research prioritisation (vm1.prequalify); they never qualify a company by themselves.
         # ORDER BY makes the LIMIT window deterministic instead of an arbitrary server-side slice.
@@ -195,29 +199,60 @@ class WikidataAdapter(Adapter):
 }} ORDER BY ?item LIMIT {int(self.limit)}"""
 
     def parse(self, data: dict, retrieved_at: str) -> list[Candidate]:
-        out: list[Candidate] = []
+        """One candidate per Wikidata item.
+
+        SPARQL returns one row per (website x headcount x description) combination, so a multi-valued item used to
+        become several candidates whose surviving copy depended on row order. Rows are merged per item
+        deterministically: the lexicographically smallest website, and the LARGEST reported headcount (an old small
+        value must not promote a company that later grew; the unknown as-of date is already noted on the evidence).
+        """
+        stats = {"rows": 0, "invalid_rows": 0, "merged_duplicate_rows": 0, "multi_headcount_items": 0, "candidates": 0}
+        self.yield_stats = stats
+        items: dict[str, dict] = {}
+        order: list[str] = []
         for row in data.get("results", {}).get("bindings", []):
+            stats["rows"] += 1
             try:
                 item = row["item"]["value"]
                 name = row["itemLabel"]["value"]
                 site = row["website"]["value"]
             except KeyError:
+                stats["invalid_rows"] += 1
                 continue
-            attrs: dict = {} if self.worldwide else {"country": "US"}
+            entry = items.get(item)
+            if entry is None:
+                entry = items[item] = {"name": name, "sites": set(), "employees": set(), "desc": None, "listed": False}
+                order.append(item)
+            else:
+                stats["merged_duplicate_rows"] += 1
+            entry["sites"].add(site)
             emp = row.get("employees", {}).get("value")
             if emp and emp.isdigit():
-                attrs["employees"] = int(emp)
+                entry["employees"].add(int(emp))
             desc = row.get("desc", {}).get("value")
-            if desc:
-                attrs["description"] = desc[:300]
+            if desc and (entry["desc"] is None or desc < entry["desc"]):
+                entry["desc"] = desc
             if row.get("listed", {}).get("value") in ("true", "1"):
+                entry["listed"] = True
+        out: list[Candidate] = []
+        for item in order:
+            entry = items[item]
+            attrs: dict = {} if self.worldwide else {"country": "US"}
+            if entry["employees"]:
+                attrs["employees"] = max(entry["employees"])
+                stats["multi_headcount_items"] += int(len(entry["employees"]) > 1)
+            if entry["desc"]:
+                attrs["description"] = entry["desc"][:300]
+            if entry["listed"]:
                 attrs["listed_on_exchange"] = True
-            out.append(Candidate(name=name, url=site, discovery_method=AUTOMATED, source=self.name,
-                                 source_id=item.rsplit("/", 1)[-1], source_url=item,
+            out.append(Candidate(name=entry["name"], url=min(entry["sites"]), discovery_method=AUTOMATED,
+                                 source=self.name, source_id=item.rsplit("/", 1)[-1], source_url=item,
                                  source_license=self.license_note, retrieved_at=retrieved_at, attrs=attrs))
+        stats["candidates"] = len(out)
         return out
 
     run_note = ""
+    yield_stats: dict = {}
 
     def discover(self) -> list[Candidate]:
         self._verify_ids()
@@ -268,7 +303,8 @@ class DrupalOrgAdapter(Adapter):
         retrieved_at = utc_now_iso()
         ys = {k: 0 for k in ("records", "invalid_record", "geography_rejected", "no_website", "no_profile_text",
                              "no_service_wording", "vendor_like_no_service_noun", "duplicate_domain",
-                             "frontend_hint", "candidates")}
+                             "frontend_hint", "location_unknown_kept", "software_focus_hint",
+                             "marketing_focus_hint", "candidates")}
         self.yield_stats = ys
         for page in range(self.MAX_PAGES):
             query = urlencode({"type": "organization", "limit": self.PAGE_SIZE, "sort": "changed",
@@ -295,6 +331,7 @@ class DrupalOrgAdapter(Adapter):
                     continue
                 location = location if isinstance(location, str) else ""
                 if self.worldwide:
+                    ys["location_unknown_kept"] += int(not location.strip())  # kept, but India cannot be ruled out
                     if INDIA_LOCATION_RE.search(location) or location.strip().upper() == "IN":
                         ys["geography_rejected"] += 1
                         continue
@@ -327,6 +364,10 @@ class DrupalOrgAdapter(Adapter):
                 # client services ("we build ..." can describe a product). It is kept, but earns no service boost.
                 vendor_like = bool(self._VENDOR.search(description)) and not self._CLIENT_SERVICE_NOUN.search(description)
                 frontend = bool(self._FRONTEND.search(description))
+                # Short, attributed excerpt of the organisation's own profile wording (CC BY-SA, source_url retained).
+                # Without it Engine #2 had NO record text for Drupal candidates and ranked them on structure alone.
+                excerpt = description.strip()[:200]
+                identity = identity_hints(name, excerpt)
                 if domain in found:
                     ys["duplicate_domain"] += 1
                 # Save flags and attribution only. The directory profile is not qualification evidence.
@@ -335,8 +376,14 @@ class DrupalOrgAdapter(Adapter):
                                       source_license=self.license_note, retrieved_at=retrieved_at,
                                       attrs={"directory_service_hint": not vendor_like,
                                              "directory_vendor_hint": vendor_like,
-                                             "directory_frontend_hint": frontend})
+                                             "directory_frontend_hint": frontend,
+                                             "directory_software_focus_hint": identity["software"],
+                                             "directory_marketing_focus_hint": identity["marketing"],
+                                             "directory_tagline": excerpt,
+                                             "directory_name": "Drupal.org"})
                 if domain not in found:
+                    ys["software_focus_hint"] += int(identity["software"])
+                    ys["marketing_focus_hint"] += int(identity["marketing"])
                     ys["vendor_like_no_service_noun"] += vendor_like
                     ys["frontend_hint"] += frontend
                 found.setdefault(domain, candidate)
@@ -376,23 +423,49 @@ class OverpassAdapter(Adapter):
                 'nwr["office"="it"]["website"](area.us);\n'
                 f'out tags center {int(self.limit)};')
 
+    # `office=it` is also used by computer-repair and hardware retail outlets; an object that also carries a retail tag
+    # is a shop, not a client-service studio, and is counted instead of being researched.
+    _RETAIL_TAGS = ("shop", "craft", "repair")
+    run_note = ""
+    yield_stats: dict = {}
+
     def parse(self, data: dict, retrieved_at: str) -> list[Candidate]:
-        out: list[Candidate] = []
+        stats = {"elements": 0, "no_name_or_website": 0, "retail_tagged": 0, "no_website_domain": 0,
+                 "duplicate_domain": 0, "with_description": 0, "candidates": 0}
+        self.yield_stats = stats
+        seen: dict[str, Candidate] = {}
         for el in data.get("elements", []):
+            stats["elements"] += 1
             tags = el.get("tags", {})
             site, name = tags.get("website"), tags.get("name")
             if not site or not name:
+                stats["no_name_or_website"] += 1
+                continue
+            if any(t in tags for t in self._RETAIL_TAGS):
+                stats["retail_tagged"] += 1
                 continue
             if "://" not in site:
                 site = "http://" + site
+            domain = canonical_domain(site)
+            if not is_first_party_candidate(domain):
+                stats["no_website_domain"] += 1
+                continue
+            if domain in seen:  # branch offices / node+way pairs of one company
+                stats["duplicate_domain"] += 1
+                continue
             attrs = {k: tags[k] for k in ("addr:state", "addr:city") if k in tags}
             attrs["country"] = "US"  # query is restricted to the US area
-            out.append(Candidate(
+            desc = tags.get("description")
+            if isinstance(desc, str) and desc.strip():
+                attrs["description"] = desc.strip()[:300]
+                stats["with_description"] += 1
+            seen[domain] = Candidate(
                 name=name, url=site, discovery_method=AUTOMATED, source=self.name,
                 source_id=f"{el.get('type')}/{el.get('id')}",
                 source_url=f"https://www.openstreetmap.org/{el.get('type')}/{el.get('id')}",
-                source_license=self.license_note, retrieved_at=retrieved_at, attrs=attrs))
-        return out
+                source_license=self.license_note, retrieved_at=retrieved_at, attrs=attrs)
+        stats["candidates"] = len(seen)
+        return list(seen.values())
 
     def discover(self) -> list[Candidate]:
         if not self.acknowledged:
@@ -400,7 +473,11 @@ class OverpassAdapter(Adapter):
                 "openstreetmap/overpass skipped: needs --ack-overpass-terms (you confirm you have read "
                 "the public-instance usage policy and accept its commercial-use caveat)")
         data = self.client.request_json("POST", self.ENDPOINT, form={"data": self.build_query()})
-        return self.parse(data, utc_now_iso())
+        out = self.parse(data, utc_now_iso())
+        self.run_note = (f"Overpass: {self.yield_stats['elements']} office=it objects (US only: this adapter cannot "
+                         f"serve a worldwide ICP), {len(out)} distinct websites; objects carry a name only, so "
+                         "relevance is unknown until first-party research")
+        return out
 
 
 class ManualCsvAdapter(Adapter):
