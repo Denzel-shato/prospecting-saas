@@ -133,7 +133,18 @@ class _Extractor(HTMLParser):
         if tag in TAG_CTX:
             labels.add(TAG_CTX[tag])
         for attr in ("class", "id", "itemprop", "itemtype", "data-testid", "role"):
-            for tok in _TOKEN_SPLIT.split(a.get(attr, "").lower()):
+            value = a.get(attr, "").lower()
+            if attr == "class":
+                # WordPress layout classes are not declarations that a team page
+                # contains client logos or editorial blog-post authors.
+                # Only known structural classes are exempt. Actual client-logo,
+                # testimonial, post-author, etc. classes retain their vetoes.
+                value = " ".join(
+                    cls for cls in value.split()
+                    if cls not in {"wp-custom-logo", "wp-block-site-logo",
+                                   "wp-block-post-content"}
+                )
+            for tok in _TOKEN_SPLIT.split(value):
                 if tok in ATTR_CTX_TOKENS:
                     labels.add(ATTR_CTX_TOKENS[tok])
         return frozenset(labels)
