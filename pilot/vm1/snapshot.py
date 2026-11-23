@@ -191,9 +191,19 @@ class ReplayFetcher(PoliteFetcher):
         self.store = store
         self.strict = strict
         self.replay = ReplayTransport(store)
+        self._recorded_dns_failures: dict[str, str] = {}
         try:
             manifest = store.read_manifest()
             unresolvable = set(manifest.get("unresolvable_hosts", []))
+            # Host-wide DNS failures are lossy: a host may have resolved for
+            # earlier pages. Retain exact per-URL DNS failures from the capture
+            # manifest so replay does not mistake them for uncaptured pages.
+            for company in manifest.get("companies", []):
+                for url, error in (company.get("page_errors") or {}).items():
+                    if error == "unsafe_url: host did not resolve":
+                        self._recorded_dns_failures[url] = error
+                if company.get("homepage_error") == "unsafe_url: host did not resolve":
+                    self._recorded_dns_failures[company["homepage"]] = company["homepage_error"]
             # Failed DNS/robots checks never reach RecordingTransport, hence have no
             # per-response timestamp. Use the *recorded capture start*, not replay wall time.
             self.capture_started_at = manifest["started_at"]
@@ -217,6 +227,14 @@ class ReplayFetcher(PoliteFetcher):
         return list(dict.fromkeys(self.replay.missing))
 
     def fetch(self, url: str) -> FetchResult:
+        # No HTTP response was recorded for a DNS validation failure, but
+        # capture() preserves that exact outcome in manifest.page_errors.
+        # Prefer an actual saved response when both exist (the same URL may
+        # have succeeded earlier in the capture).
+        error = self._recorded_dns_failures.get(url)
+        if error and not (self.store.dir / f"{_key('GET', url)}.json").exists():
+            self._record(url, None, error, 0)
+            return FetchResult(url=url, error=error, fetched_at=self.capture_started_at)
         try:
             res = super().fetch(url)
         except SnapshotMissing as exc:
