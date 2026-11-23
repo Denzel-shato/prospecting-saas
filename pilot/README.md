@@ -133,3 +133,9 @@ python3 -m vm1 run --icp icp/frontend-studio-worldwide.json --sources drupal_org
 ```
 
 Keep runs from each geography policy in separate weekly review queues.
+
+
+## Engine #1 discovery tools (offline benchmark)
+`python3 -m vm1 discover ...` runs keyless discovery adapters only (no company website fetched) and writes `pool.json`.
+`python3 -m vm1 discovery-benchmark --pool ARM=pool.json [--labels labels.csv] --out DIR` reports yield per request, unique
+coverage and precision over HUMAN labels only; automated record tiers are never labels. See `docs/VM1-ENGINE1-DISCOVERY-AUDIT.md`.

@@ -166,6 +166,15 @@ def main(argv: list[str] | None = None) -> int:
     val = sub.add_parser("validate-icp", help="validate and summarize an ICP JSON policy (offline)")
     val.add_argument("path", help="path to schema v1 or legacy flat ICP JSON")
 
+    dc = sub.add_parser("discover", help="live DISCOVERY ONLY (keyless adapters, bounded); no company website is "
+                                         "fetched. Writes pool.json for `discovery-benchmark`")
+    dc.add_argument("--icp", default=str(ROOT / "icp" / "frontend-studio-worldwide.json"))
+    dc.add_argument("--out", default=str(ROOT / "runs"))
+    dc.add_argument("--sources", default="pickanagency", help="comma list of keyless sources")
+    dc.add_argument("--ack-overpass-terms", action="store_true")
+    dc.add_argument("--pickanagency-profile", default="legacy", choices=["legacy", "complementary"])
+    dc.add_argument("--label", default="discovery", help="suffix for the run directory name (e.g. the arm name)")
+
     db = sub.add_parser("discovery-benchmark", help="OFFLINE: discovery yield, unique coverage and human-labelled "
                                                     "precision from saved pool.json files (no network)")
     db.add_argument("--pool", action="append", required=True, metavar="ARM=PATH",
@@ -194,7 +203,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"INVALID ICP: {exc}", file=sys.stderr)
             return 2
 
-    if a.cmd in ("run", "synthetic", "capture", "replay", "requalify"):
+    if a.cmd in ("run", "synthetic", "capture", "replay", "requalify", "discover"):
         try:
             a.policy = _icp(a.icp)
         except PolicyError as exc:
@@ -203,6 +212,25 @@ def main(argv: list[str] | None = None) -> int:
 
     if a.cmd == "report":
         print(write_report(a.run, a.labels))
+        return 0
+
+    if a.cmd == "discover":
+        from .discover_only import discover_only
+        try:
+            names = [n for n in a.sources.split(",") if n.strip()]
+            adapters = build_adapters(names, client=ApiClient(), ack_overpass_terms=a.ack_overpass_terms,
+                                      worldwide=a.policy.geography.exclude_india,
+                                      pickanagency_profile=a.pickanagency_profile)
+        except PaidApiBlocked as exc:
+            print(f"BLOCKED (paid/keyed source refused): {exc}", file=sys.stderr)
+            return 2
+        except DiscoveryBlocked as exc:
+            print(f"BLOCKED: {exc}", file=sys.stderr)
+            return 3
+        res = discover_only(adapters, a.out, a.policy, a.label)
+        print(f"discovery only: {res['run_dir']} (pool {len(res['pool'])}; no company website fetched; $0)")
+        for st in res["manifest"]["discovery_status"]:
+            print(f"  {st['adapter']}: {st['status']} {st['count']}" + (f" - {st.get('reason')}" if st.get("reason") else ""))
         return 0
 
     if a.cmd == "discovery-benchmark":

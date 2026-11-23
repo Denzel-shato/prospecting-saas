@@ -232,3 +232,13 @@ Branch `vm1-pilot-issue5-icp-foundation`; worldwide ICP policy_version 1.1.2. Or
 **Fix.** New optional policy field `prequalify.service_line_terms` (subset of negative_terms; worldwide ICP: `social media`). As a directory label it is neutral (0, reported as `service_line_neutralised`) when the record also shows a specific target-service term; it is not a bonus. Unchanged on purpose: marketing-only labels keep -2; labels with only generic web terms keep -2; first-party description/tagline stays authoritative (the same words there are penalised unless that text itself names a specific specialization, so a marketing tagline over software labels stays penalised); `directory_marketing_focus_hint` (-1, name/tagline), exchange listing, headcount, SaaS/platform/cloud penalties unchanged. No company names or per-company values.
 
 **Evidence.** `pilot/runs/pickanagency-candidates-rich.json` was NOT available in the sandbox (gitignored), so the real 37-company pool was not re-ranked and Build Me App / Synoviq movements are unmeasured here. Run locally: `cd pilot && python3 scripts/engine2_mixed_service_before_after.py --pool runs/pickanagency-candidates-rich.json --seed <seed used live>` (prints old->new rank, score and reason per domain). On the fictional fallback pool, mixed software+marketing listings moved 6->3 and 3->2, marketing-only and SaaS-vendor records did not move. Automated tiers are not ground truth; fit for the real pool still needs independent review of each record (unknowns: services depth, real first-party positioning, whether software work is client-facing).
+
+
+## Engine #1 discovery audit — 2026-11-23 (branch `vm1-pilot-issue5-icp-foundation`)
+Done (offline, $0, no live calls): audited PickAnAgency/Wikidata/Drupal.org/OSM; adapter hardening; PickAnAgency per-query yield,
+documented US `country` filter, audit-only team-size/industry metadata, opt-in `--pickanagency-profile complementary`;
+`pool.json` for every run; `discover` (discovery-only) and `discovery-benchmark` commands; source decisions in
+`pilot/source_catalog.json`. Read `docs/VM1-ENGINE1-DISCOVERY-AUDIT.md`. Tests: 455 offline pass (was 416). Engine #2 ranking,
+scoring, backfill, evidence and decision-maker code untouched (one compat-test invariant narrowed, see audit doc).
+Not proven: any real-world yield improvement. Real 37-company pool was not available; import it with `discovery-benchmark --pool`.
+Next: run the 6-request live A/B in the audit doc, human-label the unique companies, compare relevant studios per request.

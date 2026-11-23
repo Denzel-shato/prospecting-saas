@@ -300,5 +300,73 @@
       "automated_adapter": false,
       "automated_access_verified": false
     }
+  ],
+  "evaluated_sources": [
+    {
+      "id": "pickanagency_industry_filter",
+      "decision": "adopted_opt_in",
+      "reviewed_on": "2026-11-23",
+      "reason": "Documented `industry` filter (openapi.json) lets one of the 3 bounded queries target studios serving SaaS clients instead of repeating a free-text variant of the category query. Unmeasured hypothesis: exposed as --pickanagency-profile complementary, default unchanged until a live A/B shows more human-relevant studios per request.",
+      "evidence_urls": [
+        "https://www.pickanagency.com/developers",
+        "https://www.pickanagency.com/api/v1/openapi.json"
+      ]
+    },
+    {
+      "id": "pickanagency_pagination",
+      "decision": "not_available",
+      "reviewed_on": "2026-11-23",
+      "reason": "The documented search API has no offset/page/cursor/sort parameter and limit caps at 25, so one query can never return more than 25 records. Bulk or extra fields require contacting the provider (hello@pickanagency.com).",
+      "evidence_urls": [
+        "https://www.pickanagency.com/api/v1/openapi.json"
+      ]
+    },
+    {
+      "id": "drupal_org_membership_filter",
+      "decision": "not_adopted_needs_live_check",
+      "reviewed_on": "2026-11-23",
+      "reason": "Field filtering is documented (e.g. field_org_membership_status). It would drop dormant listings but also every non-member studio; the effect on relevant-studio yield is unknown. Organization nodes have no documented size/services fields.",
+      "evidence_urls": [
+        "https://www.drupal.org/drupalorg/docs/apis/rest-and-other-apis"
+      ]
+    },
+    {
+      "id": "github_org_search",
+      "decision": "rejected",
+      "reviewed_on": "2026-11-23",
+      "reason": "GitHub's Acceptable Use Policies and Terms prohibit using information collected from the service, including through the API, for spamming/unsolicited solicitation. This product's purpose is outbound prospecting, so GitHub-derived company lists are a policy risk even though the API is free.",
+      "evidence_urls": [
+        "https://docs.github.com/en/site-policy/acceptable-use-policies/github-acceptable-use-policies"
+      ]
+    },
+    {
+      "id": "companies_house_uk",
+      "decision": "blocked_requires_key",
+      "reviewed_on": "2026-11-23",
+      "reason": "Every request needs a registered API key (free, but a key is outside the keyless $0 pilot approval), and the register is UK-only. SIC 62012 would find software companies but the register carries no website or headcount, so first-party domains could not be derived without guessing.",
+      "evidence_urls": [
+        "https://developer-specs.company-information.service.gov.uk/guides/authorisation"
+      ]
+    },
+    {
+      "id": "clutch_goodfirms_designrush_sortlist",
+      "decision": "not_added",
+      "reviewed_on": "2026-11-23",
+      "reason": "No documented free API or permission to collect was found in the existing catalog review; these domains are already treated as non-first-party. Not re-verified in this session. Use manual review via directory_seed only.",
+      "evidence_urls": []
+    },
+    {
+      "id": "common_crawl",
+      "decision": "not_added",
+      "reviewed_on": "2026-11-23",
+      "reason": "Finding studios by content would require downloading WARC data in bulk, which this task forbids; the URL index alone cannot identify software studios. Not tested.",
+      "evidence_urls": []
+    },
+    {
+      "id": "wikidata_additional_classes",
+      "decision": "not_added",
+      "reviewed_on": "2026-11-23",
+      "reason": "Other Wikidata classes (e.g. web development or IT-consulting companies) could not have their Q-ids verified offline. WikidataAdapter fails closed on label mismatch, so a class should only be added together with a live label check and a COUNT query; thin studio coverage is expected either way."
+    }
   ]
 }

@@ -265,3 +265,80 @@ class PoolArtifactTests(unittest.TestCase):
         self.assertTrue(all({"domain", "attrs", "source", "discovery_method"} <= set(p) for p in pool))
         self.assertEqual({p["domain"] for p in pool} >= {s["domain"] for s in selected}, True)
         self.assertEqual(len(bench.load_pool(run / "pool.json")), len(pool))
+
+
+class DiscoverOnlyTests(unittest.TestCase):
+    def test_discovery_only_writes_pool_and_manifest_without_any_research_or_network(self):
+        import contextlib
+        import io
+        import json
+        import tempfile
+        from pathlib import Path
+
+        from vm1 import discovery_benchmark as bench
+        from vm1.discover_only import discover_only
+        from vm1.discovery import AUTOMATED, Adapter, Candidate
+        from vm1.policy import load_policy
+
+        class Ok(Adapter):
+            name, terms_note, license_note = "fake_ok", "t", "l"
+            yield_stats = {"per_query": [{"query": {"q": "x"}}]}
+
+            def discover(self):
+                return [Candidate("A", "https://a.example", AUTOMATED, "fake_ok", attrs={"directory_tagline": "x"}),
+                        Candidate("A again", "https://www.a.example", AUTOMATED, "fake_ok"),
+                        Candidate("B", "https://b.example", AUTOMATED, "fake_ok")]
+
+        class Blocked(Adapter):
+            name, terms_note, license_note = "fake_blocked", "t", "l"
+
+            def discover(self):
+                raise DiscoveryBlocked("nope")
+
+        root = Path(__file__).resolve().parent.parent
+        res = discover_only([Ok(), Blocked()], tempfile.mkdtemp(), load_policy(root / "icp" / "frontend-studio-worldwide.json"), "arm")
+        m = res["manifest"]
+        self.assertEqual((m["counts"]["discovered_raw"], m["counts"]["after_dedup_pool"]), (3, 2))
+        self.assertEqual([s["status"] for s in m["discovery_status"]], ["ok", "blocked"])
+        self.assertEqual(m["paid_api_spend_usd"], 0.0)
+        self.assertIn("no company website was fetched", m["research"])
+        self.assertTrue(res["run_dir"].name.endswith("-arm"))
+        pool = bench.load_pool(res["run_dir"] / "pool.json")
+        self.assertEqual(sorted(r["domain"] for r in pool), ["a.example", "b.example"])
+        # the manifest is accepted by the benchmark for exact per-request accounting
+        r = bench.run_benchmark({"arm": pool}, load_policy(root / "icp" / "frontend-studio-worldwide.json"),
+                                manifests={"arm": json.loads((res["run_dir"] / "manifest.json").read_text())})
+        self.assertEqual(r["arms"]["arm"]["yield_per_request"]["requests"], 1)
+
+    def test_cli_refuses_paid_and_manual_only_sources_before_any_request(self):
+        import contextlib
+        import io
+
+        from vm1.cli import main
+        for source, code in (("exa", 2), ("vercel_solution_partners", 3)):
+            with contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(main(["discover", "--sources", source, "--out", "/nonexistent/never-written"]), code)
+
+    def test_module_never_fetches_company_sites(self):
+        from pathlib import Path
+        src = (Path(__file__).resolve().parent.parent / "vm1" / "discover_only.py").read_text()
+        for banned in ("PoliteFetcher", "fetch_page", "evidence", "score"):
+            self.assertNotIn(banned, src.replace("never scores", ""))
+
+
+class EvaluatedSourcesCatalogTests(unittest.TestCase):
+    def test_every_evaluated_source_has_a_decision_reason_and_rejected_ones_are_not_registered(self):
+        import json
+
+        from vm1.directory_seed import DEFAULT_CATALOG, load_catalog
+        from vm1.discovery import KEYLESS_REGISTRY
+        data = json.loads(DEFAULT_CATALOG.read_text())
+        load_catalog(DEFAULT_CATALOG)  # the added section must not break fail-closed loading
+        ids = [e["id"] for e in data["evaluated_sources"]]
+        self.assertEqual(len(ids), len(set(ids)))
+        for e in data["evaluated_sources"]:
+            self.assertTrue(e["decision"] and len(e["reason"]) > 40 and e["reviewed_on"])
+            if e["decision"] in ("rejected", "blocked_requires_key", "not_added", "not_available"):
+                self.assertNotIn(e["id"], KEYLESS_REGISTRY)
+            if e["decision"] in ("rejected", "blocked_requires_key"):
+                self.assertTrue(e["evidence_urls"], "a refusal must cite its evidence")
