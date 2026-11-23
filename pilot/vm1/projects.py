@@ -40,6 +40,25 @@ _PRODUCTION = re.compile(r"\bour team\b.{0,65}\bfrom scratch\b.{0,95}\bdeploy(?:
 _WORKED_ON = re.compile(r"\bwe(?:['’]ve| have) (?:ever )?worked on\b", re.I)
 _WEB_SERVICE = re.compile(r"\b(?:web (?:development|application development)|front[- ]?end development)\b", re.I)
 
+# Published client case studies frequently describe an explicitly commissioned
+# project as "We partnered with Client, a startup, to create a web application".
+# The appositive is not itself evidence; require the same sentence to identify
+# the client relationship, commissioned creation and an application artifact.
+_PARTNERED_APP = re.compile(
+    r"\b(?:we|our team) (?:partnered|collaborated|worked) with "
+    r"(?P<client>[A-Z][\w’'-]*(?: [A-Z][\w’'-]*){0,3})"
+    r"(?:, [^.!?]{0,90})? to (?:create|build|develop|deliver|launch)\b", re.I)
+
+# Some genuine delivered client systems are described without a public client
+# name because of NDA. Only accept this when the SAME case detail explicitly
+# says the client's identity is confidential, and separately attributes a
+# completed application deliverable to the studio.
+_NDA_CLIENT = re.compile(
+    r"\b(?:client|customer) (?:and (?:product|project) )?names? "
+    r"(?:are|is) (?:kept )?confidential\b.{0,55}\bNDA\b"
+    r"|\b(?:client|customer)(?:'s)? name (?:is|was) (?:withheld|confidential|"
+    r"undisclosed)\b", re.I)
+
 
 def project_terms(text: str) -> list[str]:
     return sorted({m.group().lower() for m in _APPLICATION.finditer(text)})
@@ -111,6 +130,8 @@ def project_excerpts(page: PageData, kind: str, names: list[str]) -> list[str]:
     actor = r"we|our team" + ("|" + brand if brand else "")
     delivered = re.compile(rf"\b(?:{actor})(?:['’]ve| have)?\s+(?:designed and )?{_DELIVERY}\b", re.I)
     passages = list(_passages(page))
+    nda_note = next((sentence for _, sentence in passages if
+                     len(sentence) <= 240 and _NDA_CLIENT.search(sentence)), None)
     clients = {}
     for i, sentence in passages:
         link = _CLIENT.search(sentence)
@@ -121,6 +142,14 @@ def project_excerpts(page: PageData, kind: str, names: list[str]) -> list[str]:
             if (re.fullmatch(r"[A-Z][\w &.,'’()-]{1,85}", value)
                     and not page.ctx_at(i + 1) & _OTHER_VOICE):
                 clients[i] = value
+    if kind == "detail":
+        for _, sentence in passages:
+            partner = _PARTNERED_APP.search(sentence)
+            if partner:
+                app = _APPLICATION.search(sentence, partner.end())
+                if (app and app.end() - partner.start() <= 185
+                        and not _OTHER_ACTOR.search(sentence[partner.end():app.start()])):
+                    return [_excerpt(sentence, partner.start(), app.end())]
     for i, sentence in passages:
         for action in delivered.finditer(sentence):
             app = _APPLICATION.search(sentence, action.end())
@@ -140,6 +169,8 @@ def project_excerpts(page: PageData, kind: str, names: list[str]) -> list[str]:
                 nearby = [(abs(j - i), clients[j]) for j in range(max(0, i - 12), i + 13) if j in clients]
                 if nearby:
                     return [proof, min(nearby)[1]]
+                if nda_note:
+                    return [proof, nda_note]
         # A portfolio tile may describe the built artifact without a verb. Require the named
         # beneficiary from this tile's heading to reappear in the very same application description.
         if kind == "index" and sentence.startswith(("A ", "An ")):
