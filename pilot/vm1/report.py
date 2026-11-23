@@ -199,6 +199,14 @@ def render_report(run: dict, m: dict) -> str:
              f"{c['selected_manual']} + synthetic {c['selected_synthetic']}")
     L.append(f"- selection: {man.get('selection_method', 'deterministic hash order')}; seed `{man['seed']}`, "
              f"cap {man['max_candidates']}")
+    rp = man.get("research_plan")
+    if rp:
+        oc = rp["outcomes"]
+        L.append(f"- research plan: target {rp['target_assessed']} assessed within a budget of {rp['max_research']} "
+                 f"attempts; attempted {rp['attempted']} (initial {rp['initial_attempted']}, backfill "
+                 f"{rp['backfill_attempted']}); assessed {oc['assessed']}, inaccessible {oc['inaccessible']}, "
+                 f"robots-refused {oc['not_researchable']}, excluded by evidence {oc['excluded']}; "
+                 f"stopped: {rp['stop_reason']}; not researched {rp['unresearched_in_pool']} (skipped.json)")
     cov = man.get("discovery_coverage")
     if cov and cov.get("pool"):
         if "agency_like_description" in cov:

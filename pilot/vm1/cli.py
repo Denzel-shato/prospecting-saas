@@ -73,6 +73,7 @@ def _dev_snapshot_cmd(a) -> int:
         return 5
     fetcher = ReplayFetcher(store, strict=not a.collect_missing)
     cfg = RunConfig(icp=a.policy, out_dir=Path(a.out), mode="replay", max_candidates=len(man["candidates"]),
+                    max_research=len(man["candidates"]),  # replay re-researches the captured set only
                     max_secondary=a.max_secondary,
                     extra={"replay": {"capture_id": man["capture_id"], "captured_at": man["started_at"],
                                       "capture_ended_at": man["ended_at"], "snapshot_dir": str(store.root)}})
@@ -114,7 +115,10 @@ def main(argv: list[str] | None = None) -> int:
                         "attribution, dedupes by domain, labelled MANUAL, excluded from autonomous metrics")
     r.add_argument("--directory-source", help="catalog directory id for rows without a directory_id column")
     r.add_argument("--source-catalog", help="source catalog JSON (default: pilot/source_catalog.json)")
-    r.add_argument("--max-candidates", type=int, default=40)
+    r.add_argument("--max-candidates", type=int, default=40,
+                   help="companies to get ASSESSED; inaccessible/excluded attempts are backfilled")
+    r.add_argument("--max-research", type=int, default=None,
+                   help="hard cap on research attempts including backfill (default: max-candidates + 50%%)")
     r.add_argument("--seed", default="vm1-pilot-1")
     r.add_argument("--min-delay", type=float, default=2.0, help="seconds between requests to one host")
     r.add_argument("--labels", help="human labels CSV to include in the report")
@@ -232,7 +236,7 @@ def main(argv: list[str] | None = None) -> int:
                                       source_catalog=a.source_catalog)
             fetcher = PoliteFetcher(min_delay=a.min_delay)
             cfg = RunConfig(icp=a.policy, out_dir=Path(a.out), mode="live",
-                            max_candidates=a.max_candidates, seed=a.seed)
+                            max_candidates=a.max_candidates, max_research=a.max_research, seed=a.seed)
     except PaidApiBlocked as exc:
         print(f"BLOCKED (paid/keyed source refused): {exc}", file=sys.stderr)
         return 2

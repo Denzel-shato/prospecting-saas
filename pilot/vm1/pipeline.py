@@ -5,9 +5,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import platform
 import re
 import time
+from collections import Counter, deque
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -36,7 +38,8 @@ class RunConfig:
     icp: dict | IcpPolicy
     out_dir: Path
     mode: str = "live"  # live | synthetic_fixture
-    max_candidates: int = 40
+    max_candidates: int = 40  # companies the run wants ASSESSED (failed attempts are backfilled)
+    max_research: int | None = None  # hard cap on research attempts incl. backfill; None -> default_research_budget
     seed: str = "vm1-pilot-1"
     max_secondary: int = 4
     draft_count: int = 10
@@ -242,10 +245,90 @@ def rank(companies: list[dict]) -> list[dict]:
     return sorted(elig, key=lambda c: (-c["total"], c["domain"]))
 
 
+# --- bounded research backfill (Engine #2) -------------------------------------------------------
+# `max_candidates` is the number of companies the run wants ASSESSED. A research attempt that yields no
+# assessment is replaced by the next candidate in priority order, up to `max_research` attempts in total.
+DEFAULT_BACKFILL_RATIO = 0.5  # default extra attempts, as a share of max_candidates (configurable per run)
+
+ASSESSED = "assessed"                # a first-party homepage was read and the company was scored (any tier)
+INACCESSIBLE = "inaccessible"        # homepage not fetched: HTTP error such as 403, timeout, TLS/network, redirect
+NOT_RESEARCHABLE_ROBOTS = "not_researchable"  # robots.txt/crawl-delay refusal: nothing was fetched
+EXCLUDED_BY_EVIDENCE = "excluded"    # fetched, and first-party evidence confirms a hard exclusion rule
+
+
+def default_research_budget(max_candidates: int) -> int:
+    return max_candidates + math.ceil(max(max_candidates, 0) * DEFAULT_BACKFILL_RATIO)
+
+
+def research_outcome(rec: dict) -> str:
+    """Why a research attempt did or did not produce an assessment. Only ASSESSED counts toward the target.
+    A weak or low-fit company is still ASSESSED: backfill replaces failed attempts, it never chases tiers."""
+    if rec.get("tier") == NOT_RESEARCHABLE:
+        return NOT_RESEARCHABLE_ROBOTS
+    if not (rec.get("homepage") or {}).get("ok"):
+        return INACCESSIBLE
+    if rec.get("tier") == EXCLUDED:
+        return EXCLUDED_BY_EVIDENCE
+    return ASSESSED
+
+
+def research_with_backfill(ranked: list[Ranked], target: int, budget: int, research) -> tuple[list[dict], list[Candidate], dict]:
+    """Research `ranked` in order until `target` companies are assessed, `budget` attempts are spent, or the
+    pool is exhausted. Deterministic: the order is fixed up front and each step depends only on the previous
+    outcomes. `research(candidate) -> record` is research_company; its fetch protections apply unchanged."""
+    companies: list[dict] = []
+    researched: list[Candidate] = []
+    unreplaced: deque[str] = deque()  # failed attempts not yet matched with a backfill, oldest first
+    assessed = 0
+    for pos, row in enumerate(ranked, start=1):
+        if assessed >= target or len(companies) >= budget:
+            break
+        rec = research(row.candidate)
+        outcome = research_outcome(rec)
+        attempt = len(companies) + 1
+        meta = {"attempt": attempt, "wave": "initial" if attempt <= target else "backfill",
+                "pool_rank": pos, "priority": row.priority, "outcome": outcome}
+        if meta["wave"] == "backfill" and unreplaced:
+            meta["backfill_for"] = unreplaced.popleft()
+        if outcome == ASSESSED:
+            assessed += 1
+        else:
+            unreplaced.append(rec["domain"])
+        rec["research_selection"] = meta
+        companies.append(rec)
+        researched.append(row.candidate)
+    stop = "target_met" if assessed >= target else "budget_exhausted" if len(companies) >= budget else "pool_exhausted"
+    outcomes = Counter(c["research_selection"]["outcome"] for c in companies)
+    plan = {"target_assessed": target, "max_research": budget, "attempted": len(companies), "assessed": assessed,
+            "initial_attempted": sum(c["research_selection"]["wave"] == "initial" for c in companies),
+            "backfill_attempted": sum(c["research_selection"]["wave"] == "backfill" for c in companies),
+            "outcomes": {k: outcomes.get(k, 0) for k in (ASSESSED, INACCESSIBLE, NOT_RESEARCHABLE_ROBOTS,
+                                                         EXCLUDED_BY_EVIDENCE)},
+            "target_shortfall": max(0, target - assessed), "stop_reason": stop,
+            "unresearched_in_pool": len(ranked) - len(companies)}
+    return companies, researched, plan
+
+
+def skipped_records(ranked: list[Ranked], researched: list[Candidate], plan: dict) -> list[dict]:
+    """Every pool candidate that was NOT researched, with its rank and why research stopped before it."""
+    done = {c.domain for c in researched}
+    why = {"target_met": "not_reached: target of assessed companies met",
+           "budget_exhausted": "not_reached: research budget exhausted",
+           "pool_exhausted": "not_reached"}[plan["stop_reason"]]
+    return [{"name": r.candidate.name, "url": r.candidate.url, "domain": r.candidate.domain,
+             "method": r.candidate.discovery_method, "source": r.candidate.source,
+             "source_id": r.candidate.source_id, "source_url": r.candidate.source_url,
+             "pool_rank": pos, "priority": r.priority, "reasons": r.reasons, "skipped_reason": why}
+            for pos, r in enumerate(ranked, start=1) if r.candidate.domain not in done]
+
+
 def run_pipeline(cfg: RunConfig, adapters: list[Adapter], fetcher: PoliteFetcher,
                  ledger: SpendLedger | None = None) -> dict:
     ledger = ledger or SpendLedger()
     policy = load_policy(cfg.icp)  # fail closed on invalid/non-baseline ICPs before discovery or HTTP
+    budget = default_research_budget(cfg.max_candidates) if cfg.max_research is None else cfg.max_research
+    if budget < cfg.max_candidates:
+        raise ValueError(f"max_research ({budget}) must be >= max_candidates ({cfg.max_candidates})")
     t0 = time.monotonic()
     started = _now()
     stage: dict[str, float] = {}
@@ -279,11 +362,15 @@ def run_pipeline(cfg: RunConfig, adapters: list[Adapter], fetcher: PoliteFetcher
 
     # 2. canonicalize / dedup / select
     pool, rejected, possible_same = dedup(discovered)
-    selected, selection_info = select_with_reasons(pool, cfg.max_candidates, cfg.seed, policy)
+    ranked_pool, priority_info = prioritize_pool(pool, cfg.seed, policy)
 
-    # 3. research
+    # 3. research: best-first until `max_candidates` companies are assessed; failed attempts are backfilled
     t = time.monotonic()
-    companies = [research_company(c, fetcher, policy, cfg.max_secondary) for c in selected]
+    companies, selected, research_plan = research_with_backfill(
+        ranked_pool, cfg.max_candidates, budget,
+        lambda c: research_company(c, fetcher, policy, cfg.max_secondary))
+    selection_info = {c.domain: priority_info[c.domain] for c in selected if c.domain in priority_info}
+    skipped = skipped_records(ranked_pool, selected, research_plan)
     stage["research_s"] = round(time.monotonic() - t, 2)
 
     # 4. rank + drafts
@@ -313,9 +400,12 @@ def run_pipeline(cfg: RunConfig, adapters: list[Adapter], fetcher: PoliteFetcher
         "version": __version__, "python": platform.python_version(), "user_agent": USER_AGENT,
         "icp_id": policy.id, "policy_version": policy.policy_version, "policy_digest": policy.digest,
         "policy_source_format": policy.source_format, "seed": cfg.seed, "max_candidates": cfg.max_candidates,
+        "max_research": budget, "research_plan": research_plan,
         "discovery_status": discovery_status,
+        # "selected" means RESEARCHED (initial wave + backfill), so the report funnel adds up.
         "counts": {"discovered_raw": len(discovered), "after_dedup_pool": len(pool),
-                   "rejected": len(rejected), "selected": len(selected),
+                   "rejected": len(rejected), "selected": len(selected), "researched": len(selected),
+                   "skipped_not_researched": len(skipped),
                    "selected_automated": sum(1 for c in selected if c.discovery_method == AUTOMATED),
                    "selected_manual": sum(1 for c in selected if c.discovery_method == "manual"),
                    "selected_synthetic": sum(1 for c in selected if c.discovery_method == "synthetic_fixture"),
@@ -327,7 +417,7 @@ def run_pipeline(cfg: RunConfig, adapters: list[Adapter], fetcher: PoliteFetcher
         "spend_ledger_entries": len(ledger.entries),
         "credentials_detected_in_env_but_ignored": credentials_present(),
         "selection_method": ("prequalify priority (record description/listing/headcount), then ICP-term breadth "
-                             "in record text, then seeded hash"),
+                             "in record text, then seeded hash; failed attempts backfilled within max_research"),
         "selection_priorities": selection_info,
         "discovery_coverage": coverage(pool, policy),
         "possible_same_company_different_domain": possible_same,
@@ -345,6 +435,7 @@ def run_pipeline(cfg: RunConfig, adapters: list[Adapter], fetcher: PoliteFetcher
     _write_json(out / "manifest.json", manifest)
     _write_json(out / "candidates.json", [asdict(c) for c in selected])
     _write_json(out / "rejected.json", rejected)
+    _write_json(out / "skipped.json", skipped)
     if seed_summaries:
         _write_json(out / "directory_seed_occurrences.json",
                     [o for c in discovered for o in c.attrs.get("seed_occurrences", [])])
@@ -358,7 +449,7 @@ def run_pipeline(cfg: RunConfig, adapters: list[Adapter], fetcher: PoliteFetcher
     for d in drafts:
         (out / "drafts" / f"{d['domain']}.txt").write_text(Draft(**d).to_text(), encoding="utf-8")
     return {"run_dir": str(out), "manifest": manifest, "companies": companies, "drafts": drafts,
-            "rejected": rejected}
+            "rejected": rejected, "skipped": skipped}
 
 
 def _write_json(path: Path, data) -> None:
