@@ -166,6 +166,20 @@ def main(argv: list[str] | None = None) -> int:
     val = sub.add_parser("validate-icp", help="validate and summarize an ICP JSON policy (offline)")
     val.add_argument("path", help="path to schema v1 or legacy flat ICP JSON")
 
+    db = sub.add_parser("discovery-benchmark", help="OFFLINE: discovery yield, unique coverage and human-labelled "
+                                                    "precision from saved pool.json files (no network)")
+    db.add_argument("--pool", action="append", required=True, metavar="ARM=PATH",
+                    help="candidate pool JSON (a run's pool.json, or a local pickanagency-candidates file); repeat "
+                         "for several arms, e.g. legacy=runs/A/pool.json complementary=runs/B/pool.json")
+    db.add_argument("--manifest", action="append", default=[], metavar="ARM=PATH",
+                    help="optional run manifest.json for an arm (exact per-query adapter yield)")
+    db.add_argument("--labels", help="HUMAN labels CSV: domain,label(relevant|not_relevant|unsure)[,labeler,reviewed_on,notes]")
+    db.add_argument("--icp", default=str(ROOT / "icp" / "frontend-studio-worldwide.json"))
+    db.add_argument("--seed", default="vm1-pilot-1")
+    db.add_argument("--out", required=True, help="output directory for discovery_benchmark.json/.md")
+    db.add_argument("--labels-template", action="store_true", help="also write labels_template.csv for human review")
+    db.add_argument("--synthetic", action="store_true", help="mark the input as fictional (banner in the report)")
+
     rp = sub.add_parser("report", help="regenerate report.md for a run")
     rp.add_argument("--run", required=True)
     rp.add_argument("--labels")
@@ -189,6 +203,35 @@ def main(argv: list[str] | None = None) -> int:
 
     if a.cmd == "report":
         print(write_report(a.run, a.labels))
+        return 0
+
+    if a.cmd == "discovery-benchmark":
+        from . import discovery_benchmark as bench
+
+        def pairs(items):
+            out = {}
+            for item in items:
+                name, sep, path = item.partition("=")
+                if not sep or not name or not path:
+                    raise SystemExit(f"expected ARM=PATH, got {item!r}")
+                out[name] = path
+            return out
+        try:
+            arms = {n: bench.load_pool(path) for n, path in pairs(a.pool).items()}
+            manifests = {n: json.loads(Path(path).read_text(encoding="utf-8")) for n, path in pairs(a.manifest).items()}
+            labels, info = bench.read_labels(a.labels)
+            policy = _icp(a.icp)
+        except (OSError, ValueError, PolicyError) as exc:
+            print(f"BENCHMARK INPUT ERROR: {exc}", file=sys.stderr)
+            return 2
+        result = bench.run_benchmark(arms, policy, labels, info, seed=a.seed, manifests=manifests,
+                                     force_synthetic=a.synthetic)
+        paths = bench.write_outputs(result, a.out)
+        if a.labels_template:
+            bench.labels_template(Path(a.out) / "labels_template.csv", arms)
+        print(f"discovery benchmark: {paths['markdown']}")
+        for n in result["notices"]:
+            print(f"NOTE: {n}")
         return 0
 
     if a.cmd == "seed-directory":

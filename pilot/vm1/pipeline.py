@@ -434,6 +434,9 @@ def run_pipeline(cfg: RunConfig, adapters: list[Adapter], fetcher: PoliteFetcher
         manifest["counts"]["selected_replay"] = sum(1 for c in selected if c.discovery_method == "replay")
     _write_json(out / "manifest.json", manifest)
     _write_json(out / "candidates.json", [asdict(c) for c in selected])
+    # The full post-dedup pool WITH discovery attributes. candidates.json keeps only the researched companies, so the
+    # discovery metadata of everything else was lost and a run's pool could never be re-ranked or benchmarked later.
+    _write_json(out / "pool.json", [asdict(c) for c in pool])
     _write_json(out / "rejected.json", rejected)
     _write_json(out / "skipped.json", skipped)
     if seed_summaries:

@@ -242,3 +242,26 @@ class OverpassHygieneTests(unittest.TestCase):
         self.assertIn('nwr["office"="it"]["website"](area.us)', ad.build_query())
         with self.assertRaises(DiscoveryBlocked):
             ad.discover()
+
+
+class PoolArtifactTests(unittest.TestCase):
+    def test_every_run_saves_the_full_pool_with_discovery_attributes_and_it_feeds_the_benchmark(self):
+        import contextlib
+        import io
+        import json
+        import tempfile
+        from pathlib import Path
+
+        from vm1 import discovery_benchmark as bench
+        from vm1.cli import main
+
+        out = Path(tempfile.mkdtemp())
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(main(["synthetic", "--out", str(out)]), 0)
+        (run,) = [p for p in out.iterdir() if p.is_dir()]
+        pool = json.loads((run / "pool.json").read_text())
+        selected = json.loads((run / "candidates.json").read_text())
+        self.assertGreaterEqual(len(pool), len(selected))
+        self.assertTrue(all({"domain", "attrs", "source", "discovery_method"} <= set(p) for p in pool))
+        self.assertEqual({p["domain"] for p in pool} >= {s["domain"] for s in selected}, True)
+        self.assertEqual(len(bench.load_pool(run / "pool.json")), len(pool))

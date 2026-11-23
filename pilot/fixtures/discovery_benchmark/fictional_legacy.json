@@ -1,0 +1,176 @@
+{
+ "candidates": [
+  {
+   "attrs": {
+    "country": "united states",
+    "directory_discovery_queries": [
+     {
+      "service": "Software Development"
+     }
+    ],
+    "directory_discovery_query": {
+     "service": "Software Development"
+    },
+    "directory_service_hint": true,
+    "directory_services": [
+     "Software Development",
+     "Web Development"
+    ],
+    "directory_tagline": "Custom software and app development studio",
+    "directory_team_size": "11-50"
+   },
+   "discovery_method": "synthetic_fixture",
+   "domain": "build-studio.example",
+   "name": "Fictional Build Studio",
+   "source": "pickanagency",
+   "url": "https://build-studio.example"
+  },
+  {
+   "attrs": {
+    "country": "united states",
+    "directory_discovery_queries": [
+     {
+      "service": "Software Development"
+     }
+    ],
+    "directory_discovery_query": {
+     "service": "Software Development"
+    },
+    "directory_service_hint": true,
+    "directory_services": [
+     "SEO",
+     "Social Media Marketing"
+    ],
+    "directory_tagline": "Social media growth agency",
+    "directory_team_size": "11-50"
+   },
+   "discovery_method": "synthetic_fixture",
+   "domain": "growth-co.example",
+   "name": "Fictional Growth Co",
+   "source": "pickanagency",
+   "url": "https://growth-co.example"
+  },
+  {
+   "attrs": {
+    "country": "united states",
+    "directory_discovery_queries": [
+     {
+      "q": "custom software"
+     }
+    ],
+    "directory_discovery_query": {
+     "q": "custom software"
+    },
+    "directory_service_hint": true,
+    "directory_services": [
+     "Custom Software Development",
+     "Social Media Marketing"
+    ],
+    "directory_tagline": "",
+    "directory_team_size": "11-50"
+   },
+   "discovery_method": "synthetic_fixture",
+   "domain": "mixed-agency.example",
+   "name": "Fictional Mixed Agency",
+   "source": "pickanagency",
+   "url": "https://mixed-agency.example"
+  },
+  {
+   "attrs": {
+    "country": "united states",
+    "directory_discovery_queries": [
+     {
+      "q": "custom software"
+     }
+    ],
+    "directory_discovery_query": {
+     "q": "custom software"
+    },
+    "directory_service_hint": true,
+    "directory_services": [
+     "Consulting",
+     "Web Design"
+    ],
+    "directory_tagline": "",
+    "directory_team_size": "11-50"
+   },
+   "discovery_method": "synthetic_fixture",
+   "domain": "generic-web.example",
+   "name": "Fictional Generic Web",
+   "source": "pickanagency",
+   "url": "https://generic-web.example"
+  },
+  {
+   "attrs": {
+    "country": "united states",
+    "directory_discovery_queries": [
+     {
+      "q": "software development"
+     }
+    ],
+    "directory_discovery_query": {
+     "q": "software development"
+    },
+    "directory_service_hint": true,
+    "directory_services": [
+     "Software Development"
+    ],
+    "directory_tagline": "The SaaS platform for project teams",
+    "directory_team_size": "11-50",
+    "directory_vendor_hint": true
+   },
+   "discovery_method": "synthetic_fixture",
+   "domain": "platform.example",
+   "name": "Fictional Platform",
+   "source": "pickanagency",
+   "url": "https://platform.example"
+  },
+  {
+   "attrs": {
+    "country": "united states",
+    "directory_discovery_queries": [
+     {
+      "q": "software development"
+     }
+    ],
+    "directory_discovery_query": {
+     "q": "software development"
+    },
+    "directory_service_hint": true,
+    "directory_services": [
+     "Software Development"
+    ],
+    "directory_tagline": "Product development studio for startups",
+    "directory_team_size": "11-50"
+   },
+   "discovery_method": "synthetic_fixture",
+   "domain": "product-studio.example",
+   "name": "Fictional Product Studio",
+   "source": "pickanagency",
+   "url": "https://product-studio.example"
+  },
+  {
+   "attrs": {
+    "country": "united states",
+    "directory_discovery_queries": [
+     {
+      "q": "software development"
+     }
+    ],
+    "directory_discovery_query": {
+     "q": "software development"
+    },
+    "directory_service_hint": true,
+    "directory_services": [],
+    "directory_tagline": "",
+    "directory_team_size": "11-50"
+   },
+   "discovery_method": "synthetic_fixture",
+   "domain": "silent.example",
+   "name": "Fictional Silent",
+   "source": "pickanagency",
+   "url": "https://silent.example"
+  }
+ ],
+ "synthetic": true
+}
