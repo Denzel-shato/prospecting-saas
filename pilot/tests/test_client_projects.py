@@ -86,6 +86,53 @@ class ClientProjectEvidence(unittest.TestCase):
         self.assertFalse(any(e.claim_type == CLAIM for e in case_evidence(mobile)))
         self.assertTrue(any(e.claim_type == CLAIM for e in case_evidence(mobile.replace("Mobile app", "Web"))))
 
+    def test_commissioned_web_application_with_client_appositive(self):
+        # Realistic CR Software / Passicity phrasing. The client's name and
+        # requested software appear together, even without "our client".
+        html = ("<h1>Custom Web Application &amp; Data Analytics</h1>"
+                "<p>We partnered with Passicity, a racing analytics startup, "
+                "to create a custom web application and a robust analytics engine.</p>")
+        claims = case_evidence(html, HOME + "case-studies/passicity/")
+        projects = [e for e in claims if e.claim_type == CLAIM]
+        self.assertEqual(len(projects), 1)
+        self.assertIn("Passicity", projects[0].excerpt)
+        self.assertIn("web application", projects[0].excerpt)
+        self.assertTrue(verify_evidence(projects[0], {
+            HOME + "case-studies/passicity/":
+            util.snap(html, HOME + "case-studies/passicity/", home=False).page}))
+        for fragment in (
+            "We partnered with Passicity, a startup, to create a logo for its dashboard.",
+            "We partnered with Passicity to create branding, not a web application.",
+            "We partnered with Passicity to create a website.",
+        ):
+            with self.subTest(fragment=fragment):
+                self.assertFalse(any(e.claim_type == CLAIM for e in case_evidence(
+                    "<p>" + fragment + "</p>", HOME + "case-studies/passicity/")))
+
+    def test_confidential_client_requires_both_delivery_and_explicit_nda(self):
+        # Realistic Build Me App wording; confidential clients remain unnamed.
+        case = HOME + "case-studies/on-demand-alcohol-delivery-platform/"
+        delivered = ("We designed and built a full-stack alcohol delivery platform "
+                     "for Canada and the United States, native iOS and Android apps, "
+                     "a web storefront, franchise management portal, and real-time order tracking.")
+        nda = "Client and product names are kept confidential under NDA."
+        html = f"<h1>On-Demand Alcohol Delivery Platform</h1><p>{delivered}</p><p>{nda}</p>"
+        projects = [e for e in case_evidence(html, case) if e.claim_type == CLAIM]
+        self.assertEqual(len(projects), 1)
+        self.assertEqual(len(projects[0].excerpt_parts), 2)
+        self.assertIn("portal", projects[0].excerpt_parts[0])
+        self.assertIn("NDA", projects[0].excerpt_parts[1])
+        self.assertTrue(verify_evidence(projects[0], {case: util.snap(html, case, home=False).page}))
+        for fragment in (
+            f"<p>{delivered}</p>",  # without client context, own-product ambiguity
+            f"<p>We built our own dashboard.</p><p>{nda}</p>",
+            f"<p>If we built a franchise portal, it would be easier.</p><p>{nda}</p>",
+            f"<blockquote>We designed and built a dashboard.</blockquote><p>{nda}</p>",
+        ):
+            with self.subTest(fragment=fragment):
+                self.assertFalse(any(e.claim_type == CLAIM for e in case_evidence(
+                    fragment, case)))
+
     def test_publicly_traded_clients_do_not_make_the_studio_a_listed_company(self):
         for text, expected in (("Our clients include publicly traded companies.", False),
                                ("We are a publicly traded company.", True)):
