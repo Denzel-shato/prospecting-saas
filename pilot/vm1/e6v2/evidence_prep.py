@@ -335,13 +335,21 @@ def _build_items(texts: list, ctxs: list, sections: list, kind: str, cfg: PrepCo
     return items, known
 
 
-def _third_party(item: _Item) -> bool:
-    return bool(item.ctx & THIRD_PARTY_CTX)
+_JOIN_BOUNDARY_CTX = THIRD_PARTY_CTX | frozenset({"footer", "aside", "nav"})
 
 
 def _can_join(neighbour, anchor: _Item) -> bool:
-    return (neighbour is not None and neighbour.section == anchor.section
-            and _third_party(neighbour) == _third_party(anchor))
+    """Join only blocks from the same section and the same semantic context region.
+
+    Footer/aside text remains eligible when it contains an explicit role, but
+    it must stay in its own flagged passage rather than being absorbed by a
+    neighbouring first-party leadership statement.
+    """
+    return (
+        neighbour is not None
+        and neighbour.section == anchor.section
+        and (neighbour.ctx & _JOIN_BOUNDARY_CTX) == (anchor.ctx & _JOIN_BOUNDARY_CTX)
+    )
 
 
 def _claimed_windows(items: list, cfg: PrepConfig) -> list:

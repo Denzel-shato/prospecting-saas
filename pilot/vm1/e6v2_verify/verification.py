@@ -14,7 +14,9 @@ Checks (first failure wins; rejections precede manual review):
    a different organisation
 7. passage third-party risk flags (quote / client / editorial / testimonial section) reject; unclear
    context flags (adjacent_quote, context_unknown, footer, aside), a non-leadership role, or an
-   untrusted page kind route to manual review
+   untrusted page kind route to manual review. A first-person quotation followed by a name/title is
+   still only adjacent attribution: unless the quote and speaker/company link are present together
+   in verifiable first-party evidence, it remains manual review and is never auto-promoted.
 
 A passage containing a statement does not prove it is true; ``accepted`` means "supported by the quoted
 first-party text", nothing more.

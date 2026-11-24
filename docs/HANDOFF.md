@@ -329,3 +329,22 @@ Done (offline, no AI/network): `pilot/vm1/e6v2_audit/` checks whether the expect
 Run locally: `cd pilot && python3 -m vm1.e6v2_audit --out runs/engine6-v2-passage-audit-1`.
 NOT RUN on the real benchmark: `pilot/runs/` is gitignored and absent in this sandbox, so there are no real coverage numbers yet. Tests (`pilot/tests/test_e6v2_audit.py`, 14, synthetic) only prove the classification logic. Matching is lexical; labels, extraction and verification code unchanged.
 Next: run it locally on the saved benchmark and read `report.md` before judging prep recall.
+
+## Engine #6 V2 — HTML context classification and evidence boundaries (2026-11-24)
+
+Branch `vm1-engine6-v2-context-classification`, based exactly on `a2d157c`. Scope is limited to HTML context classification, V2 evidence passage boundaries, verification-policy documentation and synthetic regressions. No live AI/provider calls.
+
+**Code changes.**
+- `pilot/vm1/htmlparse.py`: an `<article>` is no longer editorial by tag alone. Editorial context now comes from the URL page kind, explicit Article/BlogPosting/NewsArticle-style schema metadata, page-level Open Graph/JSON-LD article metadata, or meaningful editorial classes. WordPress static-page wrappers (`post-type-page`, `page`, `type-page`, `page-id-*`, `page-template-*`) and numeric `post-123` identifiers are not editorial evidence. Generic `CreativeWork` and Astra `ast-article-single` layout wrappers are not enough.
+- Generic `brand`, `logo` and `wp-custom-logo` styling is not client evidence by itself. Client/customer/partner/sponsor semantics remain flagged; brand/logo collections such as `brand-grid`, `logo-wall` and `client-logos` remain detectable.
+- Root `html`/`body` classes no longer turn generic theme/client/logo styling into a page-wide third-party veto. Explicit blog/news/editorial root classes remain editorial. Speaker/speaker-profile context remains editorial.
+- `pilot/vm1/e6v2/evidence_prep.py`: joining now requires matching quote/client/editorial/footer/aside/nav context labels. Footer and aside evidence can still be selected when an explicit role appears, but it stays in a separately flagged passage.
+- `pilot/vm1/e6v2_verify/verification.py`: clarified the conservative quote-attribution rule. A first-person founder quote adjacent to a name/title remains manual review unless speaker/company attribution is present together in verifiable first-party evidence. No testimonial safeguard was weakened.
+
+**Synthetic regressions added.** WordPress static-page wrappers, numeric post IDs, genuine blog/schema editorial pages, generic CreativeWork, Open Graph and JSON-LD article metadata, brand-colour utility classes, site logos, client-logo collections, conference speaker context, footer/aside passage boundaries, explicit footer-role preservation, and Tandem-style adjacent founder quotes. Existing testimonial rejection tests remain in place.
+
+**Real benchmark limitation.** The saved `pilot/runs/engine6-independent-20` snapshots and baseline report are gitignored/local-only and are not present in the connected GitHub repository. The supplied diagnostics are available, but this environment cannot inspect all saved Sidekick snapshots or rerun the 20-company audit. No real coverage improvement is claimed. After pulling this branch locally, rerun:
+`python3 -m vm1.e6v2_audit --out runs/engine6-v2-passage-audit-2`
+and compare it with `runs/engine6-v2-passage-audit-1/report.md`. Keep both directories and the source snapshots unchanged.
+
+**Validation status at initial commit.** Synthetic regressions are added. The existing offline GitHub Actions suite is enabled for this branch; its result and final test count will be recorded after the run. No local ignored files were touched by the GitHub-side changes.

@@ -12,6 +12,8 @@ from html.parser import HTMLParser
 from typing import Any, Iterator
 from urllib.parse import urldefrag, urljoin, urlsplit
 
+from .context import page_kind
+
 BLOCK_TAGS = {
     "p", "div", "li", "ul", "ol", "h1", "h2", "h3", "h4", "h5", "h6", "section", "article",
     "header", "footer", "nav", "main", "aside", "tr", "td", "th", "table", "br", "blockquote",
@@ -23,19 +25,34 @@ VOID_TAGS = {"br", "img", "meta", "link", "input", "hr", "area", "base", "col", 
 HEADING_TAGS = {"h1", "h2", "h3", "h4", "h5", "h6"}
 # Structural/semantic context labels attached to every text block (used to reject testimonials,
 # client logos, blog/author bylines, navigation, etc. as first-party company claims).
-TAG_CTX = {"blockquote": "quote", "nav": "nav", "footer": "footer", "aside": "aside", "article": "editorial"}
+# An <article> is a semantic container, not proof that its contents are editorial.
+# It is labelled only when page metadata, schema, or meaningful source classes support it.
+TAG_CTX = {"blockquote": "quote", "nav": "nav", "footer": "footer", "aside": "aside"}
 ATTR_CTX_TOKENS = {
     "testimonial": "quote", "testimonials": "quote", "review": "quote", "reviews": "quote",
     "quote": "quote", "quotes": "quote", "blockquote": "quote",
     "client": "client", "clients": "client", "customer": "client", "customers": "client",
-    "logo": "client", "logos": "client", "partner": "client", "partners": "client",
-    "sponsor": "client", "sponsors": "client", "brand": "client", "brands": "client",
-    "blog": "editorial", "post": "editorial", "posts": "editorial", "news": "editorial",
-    "press": "editorial", "author": "editorial", "byline": "editorial", "podcast": "editorial",
+    "partner": "client", "partners": "client", "sponsor": "client", "sponsors": "client",
+    "blog": "editorial", "blogs": "editorial", "post": "editorial", "posts": "editorial",
+    "news": "editorial", "press": "editorial", "editorial": "editorial", "article": "editorial",
+    "entry": "editorial", "author": "editorial", "byline": "editorial", "podcast": "editorial",
     "speaker": "editorial", "speakers": "editorial", "nav": "nav", "navbar": "nav", "menu": "nav",
     "footer": "footer",
 }
 _TOKEN_SPLIT = re.compile(r"[^a-z0-9]+")
+_SCHEMA_EDITORIAL_TYPES = frozenset({
+    "article", "blogposting", "newsarticle", "report", "scholarlyarticle", "techarticle",
+})
+_BRAND_TOKENS = frozenset({"brand", "brands"})
+_LOGO_TOKENS = frozenset({"logo", "logos"})
+_LOGO_LAYOUT_TOKENS = frozenset({"grid", "wall", "strip", "carousel", "list"})
+_WP_CLASS_EXCLUSIONS = frozenset({
+    "wp-custom-logo", "custom-logo", "site-logo", "wp-site-logo", "wp-block-site-logo",
+    "wp-block-post-content", "post-type-page",
+})
+_EDITORIAL_ROOT_CLASS_TOKENS = frozenset({
+    "blog", "blogs", "news", "press", "editorial", "single-post", "type-post", "post-type-post", "post",
+})
 MAX_BLOCK = 2000
 MAX_BLOCKS = 5000
 MAX_LINKS = 400
@@ -44,6 +61,51 @@ _WS = re.compile(r"\s+")
 
 def norm_ws(s: str) -> str:
     return _WS.sub(" ", s).strip()
+
+
+def _class_tokens(value: str) -> set[str]:
+    """Tokenise CSS classes without treating generated WordPress/theme IDs as semantics."""
+    tokens: set[str] = set()
+    for cls in (value or "").lower().split():
+        if cls in _WP_CLASS_EXCLUSIONS or re.fullmatch(r"post-\d+", cls):
+            continue
+        if cls.startswith("wp-block-post-content-is-layout-") or cls.startswith("ast-article-"):
+            continue
+        tokens.update(t for t in _TOKEN_SPLIT.split(cls) if t)
+    return tokens
+
+
+def _is_wp_static_page(classes: set[str]) -> bool:
+    return any(
+        cls in {"page", "type-page", "post-type-page"}
+        or cls.startswith("page-id-")
+        or cls.startswith("page-template-")
+        for cls in classes
+    )
+
+
+def _is_editorial_schema_value(value: str) -> bool:
+    if not isinstance(value, str):
+        return False
+    parts = [p.casefold() for p in re.split(r"[/#:\s]+", value) if p]
+    return any(part in _SCHEMA_EDITORIAL_TYPES for part in parts)
+
+
+def _jsonld_is_editorial(raw_values: list[str]) -> bool:
+    for raw in raw_values:
+        try:
+            data = json.loads(raw)
+        except (TypeError, ValueError):
+            continue
+        for node in _walk(data):
+            types = node.get("@type")
+            if isinstance(types, str):
+                types = [types]
+            if isinstance(types, list) and any(
+                _is_editorial_schema_value(t) for t in types if isinstance(t, str)
+            ):
+                return True
+    return False
 
 
 @dataclass
@@ -134,23 +196,59 @@ class _Extractor(HTMLParser):
             labels.add(TAG_CTX[tag])
         for attr in ("class", "id", "itemprop", "itemtype", "data-testid", "role"):
             value = a.get(attr, "").lower()
-            if attr == "class":
-                # WordPress layout classes are not declarations that a team page
-                # contains client logos or editorial blog-post authors.
-                # In particular, wp-block-post-content-is-layout-* contains the
-                # token "post", but denotes a CSS-generated content layout, not
-                # an authored article or editorial byline. Real client-logo,
-                # testimonial and post-author classes retain their vetoes.
-                value = " ".join(
-                    cls for cls in value.split()
-                    if cls not in {"wp-custom-logo", "wp-block-site-logo",
-                                   "wp-block-post-content"}
-                    and not cls.startswith("wp-block-post-content-is-layout-")
-                )
-            for tok in _TOKEN_SPLIT.split(value):
+            if attr in {"class", "id"}:
+                tokens = _class_tokens(value)
+                if attr == "class":
+                    classes = set(value.split())
+                    # Root classes describe the CMS/theme more often than the
+                    # semantics of every descendant. Keep explicit editorial
+                    # page markers, but ignore generic client/logo styling.
+                    if tag in {"html", "body"}:
+                        if classes & _EDITORIAL_ROOT_CLASS_TOKENS:
+                            labels.add("editorial")
+                        continue
+                    if _is_wp_static_page(classes) and not (
+                        classes & {"type-post", "post-type-post", "single-post"}
+                    ):
+                        tokens.discard("post")
+            else:
+                tokens = set(_TOKEN_SPLIT.split(value))
+
+            for tok in tokens:
                 if tok in ATTR_CTX_TOKENS:
                     labels.add(ATTR_CTX_TOKENS[tok])
+
+            # "brand" and "logo" are common design-system/site-identity words.
+            # They become client evidence only in a recognisable collection pattern.
+            if attr in {"class", "id", "data-testid"}:
+                has_brand_collection = bool(tokens & _BRAND_TOKENS) and bool(
+                    tokens & (_LOGO_TOKENS | _LOGO_LAYOUT_TOKENS)
+                )
+                has_logo_collection = bool(tokens & _LOGO_TOKENS) and bool(
+                    tokens & _LOGO_LAYOUT_TOKENS
+                )
+                if has_brand_collection or has_logo_collection:
+                    labels.add("client")
         return frozenset(labels)
+
+    def _article_is_editorial(self, attrs: dict[str, str]) -> bool:
+        if page_kind(self.base) == "editorial":
+            return True
+        if _is_editorial_schema_value(attrs.get("itemtype", "")):
+            return True
+
+        classes = set((attrs.get("class", "") or "").lower().split())
+        tokens = _class_tokens(attrs.get("class", ""))
+        if _is_wp_static_page(classes):
+            # WordPress page wrappers commonly use <article> as layout. Require
+            # a stronger editorial marker on those pages.
+            return bool(tokens & {
+                "blog", "blogs", "news", "press", "editorial", "author", "byline", "podcast",
+            })
+        return bool(tokens & {
+            "blog", "blogs", "news", "press", "editorial", "article", "entry",
+            "author", "byline", "podcast", "post",
+        })
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         a = {k.lower(): (v or "") for k, v in attrs}
@@ -170,7 +268,7 @@ class _Extractor(HTMLParser):
             return
         if tag == "meta":
             key = (a.get("name") or a.get("property") or "").lower()
-            if key in ("description", "og:site_name") and a.get("content"):
+            if key in ("description", "og:site_name", "og:type") and a.get("content"):
                 self.meta[key] = norm_ws(a["content"])
             return
         if tag == "a":
@@ -180,7 +278,10 @@ class _Extractor(HTMLParser):
         if tag in BLOCK_TAGS:
             self._flush()
         if tag not in VOID_TAGS:
-            self.stack.append((tag, self._labels(tag, a)))
+            labels = set(self._labels(tag, a))
+            if tag == "article" and self._article_is_editorial(a):
+                labels.add("editorial")
+            self.stack.append((tag, frozenset(labels)))
 
     def handle_endtag(self, tag: str) -> None:
         if tag == "script":
@@ -249,6 +350,10 @@ def parse_html(html: str, url: str) -> PageData:
     except Exception:
         pass
     people._flush()
+    og_type = ex.meta.get("og:type", "").casefold().split(":", 1)[0]
+    if og_type == "article" or _jsonld_is_editorial(ex.jsonld_raw):
+        ex.block_ctx = [frozenset((*ctx, "editorial")) for ctx in ex.block_ctx]
+        people.block_ctx = [frozenset((*ctx, "editorial")) for ctx in people.block_ctx]
     return PageData(
         url=url,
         title=norm_ws("".join(ex.title_parts))[:300],
