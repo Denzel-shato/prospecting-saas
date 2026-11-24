@@ -292,8 +292,8 @@ class _Cand:
 
     @property
     def third_party_risk(self) -> bool:
-        return any(f.startswith(("ctx:quote", "ctx:client", "ctx:editorial", "section:", "adjacent_", "page:"))
-                   for f in self.flags)
+        return any(f.startswith(("ctx:quote", "ctx:client", "ctx:editorial", "ctx:article_unknown",
+                                 "section:", "adjacent_", "page:")) for f in self.flags)
 
     def sort_key(self) -> tuple:
         priority = PAGE_PRIORITY.get(self.kind, DEFAULT_PAGE_PRIORITY)
@@ -335,7 +335,7 @@ def _build_items(texts: list, ctxs: list, sections: list, kind: str, cfg: PrepCo
     return items, known
 
 
-_JOIN_BOUNDARY_CTX = THIRD_PARTY_CTX | frozenset({"footer", "aside", "nav"})
+_JOIN_BOUNDARY_CTX = THIRD_PARTY_CTX | frozenset({"footer", "aside", "nav", "article_unknown"})
 
 
 def _can_join(neighbour, anchor: _Item) -> bool:
@@ -433,7 +433,7 @@ def _risk_flags(items: list, lo: int, hi: int, texts: list, ctxs: list, known: b
     section = items[lo].section
     for k in range(lo, hi + 1):
         for label in items[k].ctx:
-            if label in THIRD_PARTY_CTX or label in ("footer", "aside"):
+            if label in THIRD_PARTY_CTX or label in ("footer", "aside", "article_unknown"):
                 flags.add(f"ctx:{label}")
     if THIRD_PARTY_SECTION_RE.search(section):
         flags.add("section:third_party")

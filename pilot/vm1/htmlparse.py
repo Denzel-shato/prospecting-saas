@@ -48,7 +48,8 @@ _LOGO_TOKENS = frozenset({"logo", "logos"})
 _LOGO_LAYOUT_TOKENS = frozenset({"grid", "wall", "strip", "carousel", "list"})
 _WP_CLASS_EXCLUSIONS = frozenset({
     "wp-custom-logo", "custom-logo", "site-logo", "wp-site-logo", "wp-block-site-logo",
-    "wp-block-post-content", "post-type-page",
+    "wp-block-post-content", "post-type-page", "entry-content", "entry-summary",
+    "entry-title", "entry-header", "entry-meta",
 })
 _EDITORIAL_ROOT_CLASS_TOKENS = frozenset({
     "blog", "blogs", "news", "press", "editorial", "single-post", "type-post", "post-type-post", "post",
@@ -91,21 +92,60 @@ def _is_editorial_schema_value(value: str) -> bool:
     return any(part in _SCHEMA_EDITORIAL_TYPES for part in parts)
 
 
+def _node_has_editorial_type(node: Any) -> bool:
+    if not isinstance(node, dict):
+        return False
+    types = node.get("@type")
+    if isinstance(types, str):
+        types = [types]
+    return isinstance(types, list) and any(
+        _is_editorial_schema_value(t) for t in types if isinstance(t, str)
+    )
+
+
 def _jsonld_is_editorial(raw_values: list[str]) -> bool:
+    """Use page/root Article metadata, not an unrelated nested article card."""
     for raw in raw_values:
         try:
             data = json.loads(raw)
         except (TypeError, ValueError):
             continue
-        for node in _walk(data):
-            types = node.get("@type")
-            if isinstance(types, str):
-                types = [types]
-            if isinstance(types, list) and any(
-                _is_editorial_schema_value(t) for t in types if isinstance(t, str)
-            ):
+        roots = data if isinstance(data, list) else [data]
+        for root in roots:
+            if not isinstance(root, dict):
+                continue
+            if _node_has_editorial_type(root):
                 return True
+            main = root.get("mainEntity")
+            if _node_has_editorial_type(main):
+                return True
+            if isinstance(main, list) and any(_node_has_editorial_type(node) for node in main):
+                return True
+            graph = root.get("@graph")
+            if isinstance(graph, list):
+                by_id = {
+                    node.get("@id"): node for node in graph
+                    if isinstance(node, dict) and isinstance(node.get("@id"), str)
+                }
+                for node in graph:
+                    if not isinstance(node, dict):
+                        continue
+                    entity = node.get("mainEntity")
+                    refs = entity if isinstance(entity, list) else [entity]
+                    for ref in refs:
+                        if isinstance(ref, dict) and isinstance(ref.get("@id"), str):
+                            if _node_has_editorial_type(by_id.get(ref["@id"])):
+                                return True
+                        elif _node_has_editorial_type(ref):
+                            return True
     return False
+
+
+def _is_person_schema(attrs: dict[str, str]) -> bool:
+    value = attrs.get("itemtype", "")
+    return isinstance(value, str) and any(
+        part.casefold() == "person" for part in re.split(r"[/#:\s]+", value) if part
+    )
 
 
 @dataclass
@@ -279,8 +319,14 @@ class _Extractor(HTMLParser):
             self._flush()
         if tag not in VOID_TAGS:
             labels = set(self._labels(tag, a))
-            if tag == "article" and self._article_is_editorial(a):
-                labels.add("editorial")
+            if tag == "article":
+                if self._article_is_editorial(a):
+                    labels.add("editorial")
+                elif not _is_wp_static_page(set(a.get("class", "").lower().split())) and not _is_person_schema(a):
+                    # Generic article containers are not automatically editorial,
+                    # but their provenance is ambiguous until page/card semantics
+                    # establish whether they are first-party leadership content.
+                    labels.add("article_unknown")
             self.stack.append((tag, frozenset(labels)))
 
     def handle_endtag(self, tag: str) -> None:
@@ -418,7 +464,8 @@ class _PeopleExtractor(_Extractor):
         if team_roster and self.stack and self.stack[-1][0] == 'article':
             # The parser derives this label; source HTML cannot set it.
             labels = set(self.stack[-1][1])
-            labels.discard('editorial')  # default label on bare articles
+            labels.discard('editorial')
+            labels.discard('article_unknown')
             labels.add('team_roster_article')
             self.stack[-1] = ('article', frozenset(labels))
 

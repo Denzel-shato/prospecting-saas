@@ -13,7 +13,7 @@ Checks (first failure wins; rejections precede manual review):
 6. company matches the target (existing ``people.org_matches``) and the quote does not tie the role to
    a different organisation
 7. passage third-party risk flags (quote / client / editorial / testimonial section) reject; unclear
-   context flags (adjacent_quote, context_unknown, footer, aside), a non-leadership role, or an
+   context flags (adjacent_quote, context_unknown, footer, aside, unclassified article), a non-leadership role, or an
    untrusted page kind route to manual review. A first-person quotation followed by a name/title is
    still only adjacent attribution: unless the quote and speaker/company link are present together
    in verifiable first-party evidence, it remains manual review and is never auto-promoted.
@@ -41,7 +41,7 @@ MIN_QUOTE_CHARS = 8
 REQUIRED_FIELDS = ("name", "role", "company", "passage_id", "quote")
 REJECT_FLAGS = frozenset({"ctx:quote", "ctx:client", "ctx:editorial", "section:third_party",
                           "page:editorial", "page:work"})
-REVIEW_FLAGS = frozenset({"adjacent_quote", "context_unknown", "ctx:footer", "ctx:aside"})
+REVIEW_FLAGS = frozenset({"adjacent_quote", "context_unknown", "ctx:footer", "ctx:aside", "ctx:article_unknown"})
 TRUSTED_PAGE_KINDS = frozenset({"team", "about", "home"})
 
 _CLIENT_WORDS_RE = re.compile(r"(?i)\b(?:testimonials?|clients?|customers?|case stud(?:y|ies)|reviews?)\b")

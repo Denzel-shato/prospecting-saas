@@ -19,8 +19,8 @@ import json
 import re
 from dataclasses import asdict, dataclass, replace
 
-from .context import (NON_SELF_KINDS, TEAM_SECTION_RE, THIRD_PARTY_CTX, THIRD_PARTY_SECTION_RE,
-                      looks_like_quote_neighbour, page_kind)
+from .context import (ARTICLE_UNKNOWN_CTX, NON_SELF_KINDS, TEAM_SECTION_RE, THIRD_PARTY_CTX,
+                      THIRD_PARTY_SECTION_RE, looks_like_quote_neighbour, page_kind)
 from .evidence import SOURCE_SUPPORTED, PageSnapshot, name_forms
 from .htmlparse import norm_ws
 
@@ -287,7 +287,7 @@ def find_decision_makers(snaps: list[PageSnapshot], limit: int = 3, *, company_k
         for i, block in enumerate(blocks):
             if len(block) > 300:
                 continue
-            if (page.ctx_at(i) & THIRD_PARTY_CTX) or _third_party_people_section(page.section_at(i)):
+            if (page.ctx_at(i) & (THIRD_PARTY_CTX | ARTICLE_UNKNOWN_CTX)) or _third_party_people_section(page.section_at(i)):
                 continue  # testimonial / client / partner / editorial structure
             if looks_like_quote_neighbour(page, i):
                 continue  # attribution line under a quotation

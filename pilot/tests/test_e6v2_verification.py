@@ -158,6 +158,18 @@ class ManualReviewTests(VerifyBase):
 
 
 class QuoteAttributionPolicyTests(unittest.TestCase):
+    def test_unclassified_article_context_requires_manual_review(self):
+        result = prepare_evidence([snap(
+            '<article><p>Jane Doe</p><p>Founder and CEO</p></article>',
+            "https://x.example/about/", home=False)])
+        passage = by_text(result, "Jane Doe")
+        self.assertIn("ctx:article_unknown", passage.risk_flags)
+        claim = {"name": "Jane Doe", "role": "Founder and CEO", "company": COMPANY,
+                 "passage_id": passage.passage_id, "quote": "Jane Doe Founder and CEO"}
+        verdict = verify_decision_makers([claim], result, KEY, COMPANY)[0]
+        self.assertEqual((verdict.status, verdict.reason),
+                         (MANUAL_REVIEW, "unclear_context:ctx:article_unknown"))
+
     def test_first_person_founder_quote_with_adjacent_name_stays_manual_review(self):
         html = (
             '<h2>Where form and function work together</h2><section id="tandem">'

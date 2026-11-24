@@ -26,6 +26,7 @@ class ArticleSemanticsTests(unittest.TestCase):
                 ctx = context_for(html, url, needle)
                 self.assertNotIn("editorial", ctx)
                 self.assertNotIn("client", ctx)
+                self.assertNotIn("article_unknown", ctx)
 
     def test_numeric_wordpress_post_id_is_not_editorial_evidence(self):
         html = '<article class="post-2265"><p>Jane Doe</p></article>'
@@ -33,7 +34,9 @@ class ArticleSemanticsTests(unittest.TestCase):
 
     def test_generic_article_is_not_automatically_editorial(self):
         html = '<article><p>Jane Doe, Founder</p></article>'
-        self.assertNotIn("editorial", context_for(html, "https://x.example/about/", "Jane Doe"))
+        ctx = context_for(html, "https://x.example/about/", "Jane Doe")
+        self.assertNotIn("editorial", ctx)
+        self.assertIn("article_unknown", ctx)
 
     def test_blog_path_and_explicit_post_class_remain_editorial(self):
         self.assertIn("editorial", context_for(
@@ -46,7 +49,9 @@ class ArticleSemanticsTests(unittest.TestCase):
         article = '<article itemtype="https://schema.org/BlogPosting"><p>By Jane Doe</p></article>'
         creative = '<article itemtype="https://schema.org/CreativeWork"><p>Jane Doe</p></article>'
         self.assertIn("editorial", context_for(article, "https://x.example/page/", "Jane Doe"))
-        self.assertNotIn("editorial", context_for(creative, "https://x.example/page/", "Jane Doe"))
+        creative_ctx = context_for(creative, "https://x.example/page/", "Jane Doe")
+        self.assertNotIn("editorial", creative_ctx)
+        self.assertIn("article_unknown", creative_ctx)
 
     def test_page_level_open_graph_and_jsonld_article_metadata_are_honoured(self):
         og = ('<head><meta property="og:type" content="article"></head><body><p>Jane Doe</p></body>')
@@ -57,6 +62,12 @@ class ArticleSemanticsTests(unittest.TestCase):
         generic = ('<script type="application/ld+json">{"@type":"CreativeWork","name":"Work"}</script>'
                    '<p>Jane Doe</p>')
         self.assertNotIn("editorial", context_for(generic, "https://x.example/page/", "Jane Doe"))
+
+    def test_nested_blogposting_card_does_not_make_entire_homepage_editorial(self):
+        graph = ('<script type="application/ld+json">{"@context":"https://schema.org",'
+                 '"@type":"WebPage","@graph":[{"@type":"WebPage","@id":"#page"},'
+                 '{"@type":"BlogPosting","@id":"#post"}]}</script><p>Jane Doe</p>')
+        self.assertNotIn("editorial", context_for(graph, "https://x.example/", "Jane Doe"))
 
 
 class ClientBrandSemanticsTests(unittest.TestCase):

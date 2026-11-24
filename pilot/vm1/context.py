@@ -37,7 +37,8 @@ NON_OFFERING_KINDS = frozenset({"editorial", "docs", "legal", "careers", "pricin
 NON_SELF_KINDS = frozenset({"editorial", "docs", "legal", "careers", "work"})
 # Block-level context labels (see htmlparse) that mark someone else's content.
 THIRD_PARTY_CTX = frozenset({"quote", "client", "editorial"})
-UNRELIABLE_CTX = THIRD_PARTY_CTX | {"nav", "footer", "aside"}
+ARTICLE_UNKNOWN_CTX = frozenset({"article_unknown"})
+UNRELIABLE_CTX = THIRD_PARTY_CTX | ARTICLE_UNKNOWN_CTX | {"nav", "footer", "aside"}
 
 THIRD_PARTY_SECTION_RE = re.compile(
     r"\b(?:testimonials?|what (?:our )?(?:clients?|customers?|partners?) (?:say|are saying)|"
