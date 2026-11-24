@@ -347,4 +347,8 @@ Branch `vm1-engine6-v2-context-classification`, based exactly on `a2d157c`. Scop
 `python3 -m vm1.e6v2_audit --out runs/engine6-v2-passage-audit-2`
 and compare it with `runs/engine6-v2-passage-audit-1/report.md`. Keep both directories and the source snapshots unchanged.
 
-**Validation status at initial commit.** Synthetic regressions are added. The existing offline GitHub Actions suite is enabled for this branch; its result and final test count will be recorded after the run. No local ignored files were touched by the GitHub-side changes.
+**Validation.** GitHub Actions run [45337706771](https://github.com/Denzel-shato/prospecting-saas/actions/runs/45337706771) passed: 698 tests in 6.372s; all three illustrative ICP policies validated; the synthetic offline pipeline and fictional directory-seed ingestion passed. This includes 17 new synthetic regressions. Unclassified generic article containers now carry `ctx:article_unknown` (not editorial): the legacy extractor excludes them and the V2 verifier routes them to manual review. Explicit Person markup and qualifying team-list articles retain their existing paths. No testimonial/client/editorial rejection was relaxed.
+
+**Real benchmark limitation.** The 20-company saved snapshots and baseline report remain gitignored/local-only and were not available through the connected GitHub repository. The full saved Sidekick snapshot set was therefore not independently inspected, and the real 20-company audit was not rerun. No real coverage improvement is claimed. Rerun locally after pulling this branch:
+`python3 -m vm1.e6v2_audit --out runs/engine6-v2-passage-audit-2`
+then compare with `runs/engine6-v2-passage-audit-1/report.md`. Both runs use the same labels and saved source snapshots; keep the original baseline unchanged. No local ignored files were touched by the GitHub-side changes.
